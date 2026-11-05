@@ -1,7 +1,7 @@
-# 🚀 Ozon PVZ: Turbo Assistant (v2.0.0)
+# 🚀 Ozon PVZ: Turbo Assistant (v2.0.1)
 
 [![Manifest V3](https://img.shields.io/badge/Manifest-V3-brightgreen.svg)](https://developer.chrome.com/docs/extensions/mv3/intro/)
-[![Version](https://img.shields.io/badge/Version-2.0.0-blue.svg)](manifest.json)
+[![Version](https://img.shields.io/badge/Version-2.0.1-blue.svg)](manifest.json)
 [![Shelf Alert](https://img.shields.io/badge/Озон%20Полка-Shelf%20Alert-red.svg)](#-модуль-2-shelf--dispatch-alert-оповещение-об-отправке)
 [![Scanner Guard](https://img.shields.io/badge/Честный%20Знак-Scanner%20Guard-green.svg)](#-модуль-1-pvz-scanner-guard-защита-сканера)
 [![Platform](https://img.shields.io/badge/Platform-Chromium%20%7C%20Chrome%20%7C%20Yandex-orange.svg)](#)
@@ -123,7 +123,10 @@
 
 ```text
 Ozon-PVZ-Turbo-Assistant/
-├── manifest.json       # Манифест расширения Manifest V3
+├── manifest.json       # Манифест расширения Manifest V3 (v2.0.1)
+├── background.js       # Background Service Worker (координация Offscreen Audio)
+├── offscreen.html      # Контейнер Offscreen Document для обхода Autoplay Policy
+├── offscreen.js        # Автономный аудио-движок Web Audio API (AUDIO_PLAYBACK)
 ├── content.js          # Ядро: Scanner Guard + Shelf Alert (Озон Полка) + Мульти-вкладки
 ├── popup.html          # Разметка пульта управления
 ├── popup.css           # Стили интерфейса (Светлая и Темная темы)
@@ -141,9 +144,10 @@ Ozon-PVZ-Turbo-Assistant/
 | Параметр | Значение |
 |---|---|
 | **Платформа** | Google Chrome Extensions Manifest V3 |
-| **Permissions** | `storage` (локальное хранилище настроек и счетчиков) |
+| **Permissions** | `storage`, `offscreen` (надежное воспроизведение аудио без блокировок) |
 | **Host Permissions** | `*://turbo-pvz.ozon.ru/*`, `*://*.turbo-pvz.ozon.ru/*`, `file:///*`, `localhost` |
-| **Звуковой движок** | Web Audio API (двойной осциллятор Triangle + Sine, DynamicsCompressor, Boost 2.5x) |
+| **Звуковой движок** | Offscreen Document + Web Audio API (D5 -> A5, DynamicsCompressor, Boost 2.5x) |
+| **Autoplay Policy** | 100% обход ограничений браузера через `AUDIO_PLAYBACK` без единой ошибки в консоли |
 | **Синхронизация** | `chrome.storage.onChanged` + `chrome.runtime.sendMessage` + `sessionStorage` cooldown |
 | **Наблюдатель DOM** | `MutationObserver` (дебаунс 500 мс) + резервный опрос (3 сек) |
 | **Изоляция памяти** | Нулевая нагрузка на сторонние сайты (Google Таблицы, CRM, Docs) |

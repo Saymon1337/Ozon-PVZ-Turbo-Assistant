@@ -1,5 +1,5 @@
 /**
- * Ozon PVZ: Turbo Assistant — Popup Script (v2.0.0)
+ * Ozon PVZ: Turbo Assistant — Popup Script (v2.0.1)
  * Управление защитой сканера, громкими оповещениями об отправке и темами
  * Разработчик: Saymon1337
  */
@@ -269,7 +269,15 @@ document.addEventListener('DOMContentLoaded', () => {
   // 8. Кнопка теста звука
   testSoundBtn.addEventListener('click', () => {
     const vol = Number(volumeSlider.value);
-    playChime(vol);
+    if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
+      chrome.runtime.sendMessage({ type: 'PLAY_CHIME', volume: vol }, (res) => {
+        if (chrome.runtime.lastError || !res?.success) {
+          playChime(vol);
+        }
+      });
+    } else {
+      playChime(vol);
+    }
   });
 
   // 9. Обновление значений в реальном времени при открытом Popup через storage.onChanged

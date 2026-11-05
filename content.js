@@ -1,5 +1,5 @@
 /**
- * Ozon PVZ: Turbo Assistant — Content Script (v2.0.0)
+ * Ozon PVZ: Turbo Assistant — Content Script (v2.0.1)
  * Модуль 1: PVZ Scanner Guard (Защита от сбоев сканера «Честный Знак»)
  * Модуль 2: Shelf & Dispatch Alert (Оповещение о товарах на отправку + умная синхронизация мульти-вкладок)
  *
@@ -335,12 +335,14 @@
      */
     function unlockAudioContext() {
       try {
-        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-        if (!audioCtx || audioCtx.state === 'closed') {
-          audioCtx = new AudioContextClass();
-        }
-        if (audioCtx && audioCtx.state === 'suspended') {
-          audioCtx.resume().catch(() => { });
+        if (!navigator.userActivation || navigator.userActivation.hasBeenActive) {
+          const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+          if (!audioCtx || audioCtx.state === 'closed') {
+            audioCtx = new AudioContextClass();
+          }
+          if (audioCtx && audioCtx.state === 'suspended') {
+            audioCtx.resume().catch(() => { });
+          }
         }
       } catch { }
     }
@@ -508,9 +510,17 @@
     /**
      * СИНТЕЗАТОР ГРОМКОГО КОЛОКОЛЬНОГО ЗВОНКА (D5 -> A5: 587 Гц -> 880 Гц)
      * С двойным усилением (Boost 2.5x), лимитером и богатыми обертонами.
+     * Защищен от консольных ошибок Autoplay Policy браузера.
      */
     function playTwoToneChime(volumePercent) {
       try {
+        // Защита от Autoplay Policy:
+        // Если пользователь еще не взаимодействовал с этой вкладкой, не вызываем audioCtx.resume()!
+        // В Chromium это генерирует предупреждение/ошибку "The AudioContext was not allowed to start".
+        if (navigator.userActivation && !navigator.userActivation.hasBeenActive) {
+          return;
+        }
+
         const AudioContextClass = window.AudioContext || window.webkitAudioContext;
         if (!AudioContextClass) return;
 
@@ -609,17 +619,46 @@
         };
 
         if (audioCtx.state === 'suspended') {
-          audioCtx.resume().then(() => {
-            if (audioCtx.state === 'running') {
-              startSynthesis();
-            }
-          }).catch(() => { });
+          if (!navigator.userActivation || navigator.userActivation.hasBeenActive) {
+            audioCtx.resume().then(() => {
+              if (audioCtx.state === 'running') {
+                startSynthesis();
+              }
+            }).catch(() => { });
+          }
         } else if (audioCtx.state === 'running') {
           startSynthesis();
         }
       } catch (err) {
         console.warn('[Ozon PVZ Turbo Assistant] Web Audio error:', err);
       }
+    }
+
+    /**
+     * Основной триггер воспроизведения звука:
+     * Отправляет команду в Background -> Offscreen Document (AUDIO_PLAYBACK).
+     * Это гарантирует 100% срабатывание без блокировки Autoplay Policy
+     * и предотвращает появление ошибок в панели расширения.
+     */
+    function triggerChime(volumePercent) {
+      if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
+        try {
+          chrome.runtime.sendMessage({
+            type: 'PLAY_CHIME',
+            volume: volumePercent
+          }, (resp) => {
+            if (chrome.runtime.lastError || (resp && !resp.success)) {
+              // Если background недоступен (например, при локальном тесте без сервис-воркера)
+              playTwoToneChime(volumePercent);
+            }
+          });
+          return;
+        } catch {
+          // Fallback
+        }
+      }
+
+      playTwoToneChime(volumePercent);
     }
 
     /**
@@ -632,7 +671,7 @@
       }
 
       if (typeof chrome === 'undefined' || !chrome.storage?.local) {
-        playTwoToneChime(volumePercent);
+        triggerChime(volumePercent);
         return;
       }
 
@@ -654,7 +693,7 @@
             return;
           }
           chrome.storage.local.set({ lastGlobalSoundTime: now }, () => {
-            playTwoToneChime(volumePercent);
+            triggerChime(volumePercent);
           });
           return;
         }
@@ -662,7 +701,7 @@
         // Периодический повтор (шедулер)
         if (now - last >= intervalMs) {
           chrome.storage.local.set({ lastGlobalSoundTime: now }, () => {
-            playTwoToneChime(volumePercent);
+            triggerChime(volumePercent);
           });
         }
       });
