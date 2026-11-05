@@ -1,0 +1,11 @@
+# Системные файлы ОС
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Архивы
+*.zip
+
+# Папки редакторов кода
+.idea/
+.vscode/
