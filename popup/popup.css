@@ -1,0 +1,498 @@
+/* ==========================================================================
+   Ozon PVZ: Turbo Assistant — Popup Stylesheet (v2.0.0)
+   Разработчик: Saymon1337
+   Поддержка темной и светлой темы
+   ========================================================================== */
+
+:root {
+  /* Темная тема (по умолчанию) */
+  --bg-app: #0f172a;
+  --bg-card: #1e293b;
+  --bg-card-inner: #0f172a;
+  --border-card: #334155;
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --accent-blue: #2563eb;
+  --accent-blue-hover: #1d4ed8;
+  --accent-green: #10b981;
+  --accent-green-bg: rgba(16, 185, 129, 0.16);
+  --accent-red: #f87171;
+  --accent-red-bg: rgba(239, 68, 68, 0.18);
+  --switch-bg-off: #475569;
+  --switch-bg-on: #10b981;
+  --footer-title: #cbd5e1;
+  --footer-dev: #94a3b8;
+  --btn-theme-bg: #334155;
+  --btn-theme-hover: #475569;
+  --btn-theme-text: #f8fafc;
+  --slider-track: #334155;
+  --slider-thumb: #38bdf8;
+  --select-bg: #0f172a;
+  --select-border: #475569;
+}
+
+body.theme-light {
+  /* Светлая тема */
+  --bg-app: #f1f5f9;
+  --bg-card: #ffffff;
+  --bg-card-inner: #f8fafc;
+  --border-card: #e2e8f0;
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #64748b;
+  --accent-blue: #0284c7;
+  --accent-blue-hover: #0369a1;
+  --accent-green: #059669;
+  --accent-green-bg: #d1fae5;
+  --accent-red: #dc2626;
+  --accent-red-bg: #fee2e2;
+  --switch-bg-off: #cbd5e1;
+  --switch-bg-on: #059669;
+  --footer-title: #334155;
+  --footer-dev: #64748b;
+  --btn-theme-bg: #e2e8f0;
+  --btn-theme-hover: #cbd5e1;
+  --btn-theme-text: #0f172a;
+  --slider-track: #e2e8f0;
+  --slider-thumb: #0284c7;
+  --select-bg: #ffffff;
+  --select-border: #cbd5e1;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  width: 360px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  background-color: var(--bg-app);
+  color: var(--text-primary);
+  line-height: 1.4;
+  user-select: none;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.container {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ==========================================================================
+   Шапка
+   ========================================================================== */
+
+.app-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-bottom: 4px;
+}
+
+.header-top-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.logo-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-indicator {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background-color: var(--accent-green);
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.7);
+  transition: background-color 0.2s, box-shadow 0.2s;
+}
+
+.status-indicator.off {
+  background-color: #ef4444;
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.5);
+}
+
+.app-title {
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.2px;
+  color: var(--text-primary);
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-theme-toggle {
+  background-color: var(--btn-theme-bg);
+  color: var(--btn-theme-text);
+  border: 1px solid var(--border-card);
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: background-color 0.15s, transform 0.1s;
+}
+
+.btn-theme-toggle:hover {
+  background-color: var(--btn-theme-hover);
+  transform: translateY(-1px);
+}
+
+.btn-theme-toggle:active {
+  transform: translateY(0);
+}
+
+.version-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 7px;
+  border-radius: 6px;
+  background-color: var(--accent-blue);
+  color: #ffffff;
+}
+
+.brand-subtitle {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+/* ==========================================================================
+   Карточки модулей
+   ========================================================================== */
+
+.card {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-card);
+  border-radius: 12px;
+  padding: 14px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: background-color 0.2s, border-color 0.2s;
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.module-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.module-icon {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.module-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.module-subtitle {
+  font-size: 11px;
+  color: var(--text-secondary);
+  display: block;
+}
+
+/* ==========================================================================
+   Переключатели Switch
+   ========================================================================== */
+
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: var(--switch-bg-off);
+  transition: background-color 0.2s;
+  border-radius: 24px;
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background-color: #ffffff;
+  transition: transform 0.2s;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+
+input:checked + .slider {
+  background-color: var(--switch-bg-on);
+}
+
+input:checked + .slider:before {
+  transform: translateX(20px);
+}
+
+/* ==========================================================================
+   Панель статистики (Блок 1)
+   ========================================================================== */
+
+.stats-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background-color: var(--bg-card-inner);
+  border: 1px solid var(--border-card);
+  padding: 10px 14px;
+  border-radius: 8px;
+}
+
+.stats-data {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.count-value {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--accent-green);
+}
+
+.count-caption {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.btn-reset {
+  background-color: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-card);
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn-reset:hover {
+  background-color: var(--border-card);
+  color: var(--text-primary);
+}
+
+/* ==========================================================================
+   Полка отправки (Блок 2)
+   ========================================================================== */
+
+.shelf-status-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background-color: var(--bg-card-inner);
+  border: 1px solid var(--border-card);
+  padding: 10px 14px;
+  border-radius: 8px;
+}
+
+.shelf-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.shelf-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.shelf-count {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--accent-green);
+}
+
+.shelf-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+
+.shelf-badge.ready {
+  background-color: var(--accent-green-bg);
+  color: var(--accent-green);
+}
+
+.shelf-badge.alert {
+  background-color: var(--accent-red-bg);
+  color: var(--accent-red);
+  animation: pulse-badge 1.2s infinite alternate;
+}
+
+@keyframes pulse-badge {
+  0% { transform: scale(1); }
+  100% { transform: scale(1.04); }
+}
+
+/* ==========================================================================
+   Элементы управления звуком и интервалом
+   ========================================================================== */
+
+.control-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.control-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.control-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.volume-val {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent-blue);
+}
+
+.range-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  border-radius: 4px;
+  background: var(--slider-track);
+  outline: none;
+}
+
+.range-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--slider-thumb);
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  transition: transform 0.1s;
+}
+
+.range-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+
+.interval-select {
+  background-color: var(--select-bg);
+  color: var(--text-primary);
+  border: 1px solid var(--select-border);
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.interval-select:focus {
+  border-color: var(--accent-blue);
+}
+
+/* ==========================================================================
+   Кнопка теста звука
+   ========================================================================== */
+
+.btn-test-sound {
+  background-color: var(--accent-blue);
+  color: #ffffff;
+  border: none;
+  padding: 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.35);
+  transition: background-color 0.15s, transform 0.1s;
+}
+
+.btn-test-sound:hover {
+  background-color: var(--accent-blue-hover);
+  transform: translateY(-1px);
+}
+
+.btn-test-sound:active {
+  transform: translateY(0);
+}
+
+/* ==========================================================================
+   Подвал
+   ========================================================================== */
+
+.app-footer {
+  text-align: center;
+  padding-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.footer-title {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.8px;
+  color: var(--footer-title);
+  text-transform: uppercase;
+}
+
+.footer-dev {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--footer-dev);
+}

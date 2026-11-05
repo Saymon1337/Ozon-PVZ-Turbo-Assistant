@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ozon PVZ: Turbo Assistant</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body class="theme-dark">
+  <div class="container">
+    <!-- Шапка приложения -->
+    <header class="app-header">
+      <div class="header-top-row">
+        <div class="logo-wrap">
+          <span class="status-indicator" id="statusDot" title="Статус ассистента"></span>
+          <h1 class="app-title">Turbo Assistant</h1>
+        </div>
+        <div class="header-actions">
+          <button type="button" class="btn-theme-toggle" id="themeToggleBtn" title="Переключить тему оформления">
+            <span id="themeIcon">🌙</span>
+            <span id="themeLabel">Темная</span>
+          </button>
+          <span class="version-badge">v2.0.0</span>
+        </div>
+      </div>
+      <div class="brand-subtitle">Для сотрудников Турбо ПВЗ Ozon • Saymon1337</div>
+    </header>
+
+    <!-- БЛОК 1: Защита сканера («Честный Знак») -->
+    <section class="card module-card">
+      <div class="card-header">
+        <div class="module-title-wrap">
+          <span class="module-icon">🛡️</span>
+          <div>
+            <h2 class="module-title">Защита сканера</h2>
+            <span class="module-subtitle">«Честный Знак» (F12, Ctrl+U, Ctrl+Shift+I)</span>
+          </div>
+        </div>
+        <label class="switch" title="Вкл / Выкл перехват сбоев сканера">
+          <input type="checkbox" id="toggleGuard" checked>
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <div class="stats-panel">
+        <div class="stats-data">
+          <span class="count-value" id="blockedCount">0</span>
+          <span class="count-caption">сбоев предотвращено</span>
+        </div>
+        <button type="button" class="btn-reset" id="resetBtn" title="Сбросить счетчик сбоев">
+          Сброс
+        </button>
+      </div>
+    </section>
+
+    <!-- БЛОК 2: Оповещение об отправке -->
+    <section class="card module-card">
+      <div class="card-header">
+        <div class="module-title-wrap">
+          <span class="module-icon">🔔</span>
+          <div>
+            <h2 class="module-title">Оповещение об отправке</h2>
+            <span class="module-subtitle">Звук, верхняя плашка и мигание вкладки</span>
+          </div>
+        </div>
+        <label class="switch" title="Вкл / Выкл оповещения об отправке">
+          <input type="checkbox" id="shelfToggle" checked>
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <!-- Отображение текущего количества на полке -->
+      <div class="shelf-status-box" id="shelfStatusBox">
+        <div class="shelf-info">
+          <span class="shelf-label">На полке отправки:</span>
+          <span class="shelf-count" id="shelfCount">0 шт</span>
+        </div>
+        <span class="shelf-badge ready" id="shelfBadge">Полка пуста</span>
+      </div>
+
+      <!-- Настройка громкости -->
+      <div class="control-group">
+        <div class="control-header-row">
+          <span class="control-label">🔊 Громкость сигнала</span>
+          <span class="volume-val" id="volumeVal">100%</span>
+        </div>
+        <input type="range" id="volumeSlider" class="range-slider" min="10" max="100" value="100" step="5">
+      </div>
+
+      <!-- Интервал повтора напоминания -->
+      <div class="control-group">
+        <div class="control-header-row">
+          <span class="control-label">⏱️ Повтор напоминания</span>
+          <select id="intervalSelect" class="interval-select" title="Интервал между повторными сигналами">
+            <option value="2">Каждые 2 мин</option>
+            <option value="5">Каждые 5 мин</option>
+            <option value="10" selected>Каждые 10 мин</option>
+            <option value="15">Каждые 15 мин</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Кнопка теста звука -->
+      <button type="button" class="btn-test-sound" id="testSoundBtn">
+        🔊 Тест громкого звука (D5 → A5)
+      </button>
+    </section>
+
+    <!-- Подвал -->
+    <footer class="app-footer">
+      <div class="footer-title">OZON PVZ: TURBO ASSISTANT</div>
+      <div class="footer-dev">Версия 2.0.0 • Автор: Saymon1337</div>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

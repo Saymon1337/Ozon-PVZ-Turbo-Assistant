@@ -1,24 +1,35 @@
 {
   "manifest_version": 3,
-  "name": "Блокировка всплывающих окон от честного знака",
-  "version": "1.0.2",
-  "description": "Предотвращает случайное открытие DevTools (F12, Ctrl+U) при сканировании маркировки «Честный Знак» в Турбо ПВЗ Ozon и других CRM.",
+  "name": "Ozon PVZ: Turbo Assistant (Защита сканера + Оповещение об отправке)",
+  "version": "2.0.0",
+  "description": "Комплексный помощник для сотрудников Турбо ПВЗ Ozon: блокировка сбоев сканера («Честный Знак») и умные оповещения об отправке товаров.",
   "permissions": [
     "storage"
   ],
   "host_permissions": [
-    "<all_urls>"
+    "*://turbo-pvz.ozon.ru/*",
+    "*://*.turbo-pvz.ozon.ru/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*",
+    "file:///*"
   ],
   "action": {
     "default_popup": "popup.html"
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
-      "js": ["content.js"],
+      "matches": [
+        "*://turbo-pvz.ozon.ru/*",
+        "*://*.turbo-pvz.ozon.ru/*",
+        "http://localhost/*",
+        "http://127.0.0.1/*",
+        "file:///*"
+      ],
+      "js": [
+        "content.js"
+      ],
       "run_at": "document_start",
-      "all_frames": true,
-      "match_about_blank": true
+      "all_frames": true
     }
   ]
 }

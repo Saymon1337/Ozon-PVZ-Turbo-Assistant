@@ -3,8 +3,11 @@
 Thumbs.db
 desktop.ini
 
-# Архивы
+# Архивы и логи
 *.zip
+*.log
+temp_chrome_profile*
+__pycache__/
 
 # Папки редакторов кода
 .idea/
