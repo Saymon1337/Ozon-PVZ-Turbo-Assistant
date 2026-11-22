@@ -3,10 +3,10 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>Турбо ПВЗ (Эмулятор для тестов)</title>
+    <title>Турбо ПВЗ (Эмулятор для тестов v2.1.0)</title>
     <style>
         body {
-            font-family: sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             background: #f4f5f7;
             margin: 0;
             display: flex;
@@ -14,13 +14,21 @@
         }
 
         aside {
-            width: 220px;
+            width: 240px;
             background: #001a34;
             color: white;
-            padding: 20px 10px;
+            padding: 20px 12px;
             display: flex;
             flex-direction: column;
             gap: 8px;
+        }
+
+        .menu-title {
+            font-weight: 800;
+            padding: 10px;
+            color: #005bff;
+            font-size: 16px;
+            letter-spacing: 0.5px;
         }
 
         .menu-item {
@@ -31,6 +39,7 @@
             align-items: center;
             justify-content: space-between;
             font-size: 14px;
+            transition: background 0.15s;
         }
 
         .menu-item:hover {
@@ -46,27 +55,57 @@
             font-weight: bold;
         }
 
+        .badge-delivery {
+            background: #3b82f6;
+        }
+
         main {
             flex: 1;
             padding: 30px;
+            overflow-y: auto;
         }
 
         .controls {
             background: white;
-            padding: 20px;
-            border-radius: 12px;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-            max-width: 480px;
+            padding: 24px;
+            border-radius: 14px;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+            max-width: 580px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        h2, h3 {
+            margin: 0;
+            color: #0f172a;
+        }
+
+        p {
+            margin: 0;
+            color: #475569;
+            font-size: 13.5px;
+            line-height: 1.5;
+        }
+
+        .button-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
         }
 
         button {
-            padding: 10px 16px;
-            margin: 5px;
+            padding: 10px 15px;
             font-size: 13px;
-            font-weight: bold;
-            border-radius: 6px;
+            font-weight: 700;
+            border-radius: 8px;
             cursor: pointer;
-            border: 1px solid #ccc;
+            border: 1px solid #cbd5e1;
+            transition: transform 0.1s, background 0.15s;
+        }
+
+        button:active {
+            transform: scale(0.97);
         }
 
         .btn-add {
@@ -75,8 +114,32 @@
             border: none;
         }
 
+        .btn-add:hover {
+            background: #059669;
+        }
+
         .btn-reset {
             background: #ef4444;
+            color: white;
+            border: none;
+        }
+
+        .btn-reset:hover {
+            background: #dc2626;
+        }
+
+        .btn-delivery {
+            background: #2563eb;
+            color: white;
+            border: none;
+        }
+
+        .btn-delivery:hover {
+            background: #1d4ed8;
+        }
+
+        .btn-delivery-reset {
+            background: #64748b;
             color: white;
             border: none;
         }
@@ -87,14 +150,29 @@
             border: none;
         }
 
+        .btn-f12:hover {
+            background: #4f46e5;
+        }
+
         .test-hint {
-            margin-top: 14px;
-            padding: 10px;
+            padding: 12px;
             background: #f8fafc;
-            border-left: 4px solid #6366f1;
-            font-size: 12px;
-            color: #475569;
+            border-left: 4px solid #005bff;
+            border-radius: 0 8px 8px 0;
+            font-size: 12.5px;
+            color: #334155;
             line-height: 1.5;
+        }
+
+        .test-hint.warning {
+            border-left-color: #f91155;
+            background: #fff1f2;
+        }
+
+        hr {
+            margin: 4px 0;
+            border: none;
+            border-top: 1px solid #e2e8f0;
         }
     </style>
 </head>
@@ -102,43 +180,96 @@
 <body>
     <!-- Левое боковое меню как в Турбо ПВЗ -->
     <aside>
-        <div style="font-weight: bold; padding: 10px; color: #005bff;">OZON ПВЗ</div>
+        <div class="menu-title">OZON ПВЗ</div>
         <div class="menu-item"><span>📦 Приемка</span></div>
         <div class="menu-item"><span>🤝 Выдача</span></div>
+
+        <!-- 1. Целевой пункт «Отправка» (должен вызывать плашку и звук) -->
         <div class="menu-item" id="dispatchItem">
             <span>🚚 Отправка</span>
             <span class="badge" id="shelfBadge" style="display: none;">0</span>
         </div>
+
+        <!-- 2. Пункт «Доставка Ozon» (должен ИГНОРИРОВАТЬСЯ расширением, фикс ложных срабатываний) -->
+        <div class="menu-item" id="deliveryOzonItem">
+            <span>🛵 Доставка Ozon</span>
+            <span class="badge badge-delivery" id="deliveryBadge" style="display: none;">0</span>
+        </div>
+
         <div class="menu-item"><span>📋 Возвраты</span></div>
     </aside>
 
     <!-- Пульт эмулятора -->
     <main>
         <div class="controls">
-            <h2>🧪 Пульт тестирования ассистента</h2>
-            <p>Нажимай кнопки ниже, чтобы проверить работу колокольчика, плашки и мигания заголовка:</p>
-            <button class="btn-add" onclick="updateShelf(1)">+1 Товар на отправку</button>
-            <button class="btn-add" onclick="updateShelf(5)">+5 Товаров сразу</button>
-            <button class="btn-reset" onclick="updateShelf(0)">Сбросить в 0 (Очистить полку)</button>
+            <h2>🧪 Пульт тестирования ассистента v2.1.0</h2>
+            <p>Используйте этот эмулятор для проверки работы звуковых оповещений, анимаций плашки и проверки фильтра «Доставка Ozon».</p>
 
-            <hr style="margin: 16px 0; border: none; border-top: 1px solid #e2e8f0;">
+            <!-- ТЕСТ 1: Отправка -->
+            <div>
+                <h3>📦 1. Тест целевой «Отправки» (Ozon Полка):</h3>
+                <p>При добавлении товаров здесь должна появиться анимированная верхняя плашка и прозвучать выбранный сигнал.</p>
+                <div class="button-group" style="margin-top: 8px;">
+                    <button class="btn-add" onclick="updateShelf(1)">+1 Товар на отправку</button>
+                    <button class="btn-add" onclick="updateShelf(5)">+5 Товаров сразу</button>
+                    <button class="btn-reset" onclick="updateShelf(0)">Сбросить отправку (0 шт)</button>
+                </div>
+            </div>
 
-            <h3>🛡️ Тестирование защиты сканера (Честный Знак):</h3>
-            <button class="btn-f12" onclick="simulateF12()">🛡️ Симулировать сбой F12</button>
-            <div class="test-hint">
-              💡 Нажимайте кнопку выше или нажимайте <b>F12 / Ctrl+U</b> на клавиатуре. Вызов DevTools будет заблокирован, а в окне расширения мгновенно вырастет счетчик сбоев!
+            <hr>
+
+            <!-- ТЕСТ 2: Доставка Ozon (проверка фильтрации) -->
+            <div>
+                <h3>🛵 2. Проверка защиты от ложного срабатывания на «Доставка Ozon»:</h3>
+                <p>При нажатии кнопок ниже счетчик появится на пункте «Доставка Ozon». <b>Расширение должно полностью игнорировать этот блок!</b> Никаких плашек и звуков быть не должно.</p>
+                <div class="button-group" style="margin-top: 8px;">
+                    <button class="btn-delivery" onclick="updateDelivery(1)">+1 Заказ в «Доставка Ozon»</button>
+                    <button class="btn-delivery" onclick="updateDelivery(3)">+3 Заказа в «Доставка Ozon»</button>
+                    <button class="btn-delivery-reset" onclick="updateDelivery(0)">Очистить «Доставка Ozon»</button>
+                </div>
+            </div>
+
+            <hr>
+
+            <!-- ТЕСТ 3: Сканер F12 -->
+            <div>
+                <h3>🛡️ 3. Тестирование защиты сканера («Честный Знак»):</h3>
+                <div class="button-group" style="margin-top: 8px;">
+                    <button class="btn-f12" onclick="simulateF12()">🛡️ Симулировать сбой F12</button>
+                </div>
+                <div class="test-hint" style="margin-top: 10px;">
+                    💡 Нажимайте кнопку выше или клавиши <b>F12 / Ctrl+U</b>. Вызов DevTools блокируется, а в попапе расширения мгновенно вырастает счетчик предотвращенных сбоев.
+                </div>
+            </div>
+
+            <div class="test-hint warning">
+                🎯 <b>Целевой URL кнопки «Открыть отправку»:</b><br>
+                <code>https://turbo-pvz.ozon.ru/outbound/selection</code> (Отправка → Ozon Полка).
             </div>
         </div>
     </main>
 
     <script>
-        let currentCount = 0;
+        let currentShelfCount = 0;
         function updateShelf(val) {
-            currentCount = (val === 0) ? 0 : currentCount + val;
+            currentShelfCount = (val === 0) ? 0 : currentShelfCount + val;
             const badge = document.getElementById('shelfBadge');
-            if (currentCount > 0) {
+            if (currentShelfCount > 0) {
                 badge.style.display = 'inline-block';
-                badge.textContent = currentCount;
+                badge.textContent = currentShelfCount;
+            } else {
+                badge.style.display = 'none';
+                badge.textContent = '0';
+            }
+        }
+
+        let currentDeliveryCount = 0;
+        function updateDelivery(val) {
+            currentDeliveryCount = (val === 0) ? 0 : currentDeliveryCount + val;
+            const badge = document.getElementById('deliveryBadge');
+            if (currentDeliveryCount > 0) {
+                badge.style.display = 'inline-block';
+                badge.textContent = currentDeliveryCount;
             } else {
                 badge.style.display = 'none';
                 badge.textContent = '0';

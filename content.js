@@ -1,8 +1,8 @@
 /**
- * Ozon PVZ: Turbo Assistant — Content Script (v2.0.1)
+ * Ozon PVZ: Turbo Assistant — Content Script (v2.1.0)
  * Модуль 1: PVZ Scanner Guard (Защита от сбоев сканера «Честный Знак»)
  * Модуль 2: Shelf & Dispatch Alert (Оповещение о товарах на отправку + умная синхронизация мульти-вкладок)
- *
+ * 
  * Разработчик: Saymon1337
  */
 
@@ -97,9 +97,9 @@
             // Мгновенно оповещаем открытый popup через runtime message
             try {
               if (chrome.runtime?.id) {
-                chrome.runtime.sendMessage({ type: 'BLOCKED_COUNT_UPDATED', count: newTotal }).catch(() => {});
+                chrome.runtime.sendMessage({ type: 'BLOCKED_COUNT_UPDATED', count: newTotal }).catch(() => { });
               }
-            } catch {}
+            } catch { }
           });
         });
       }
@@ -137,7 +137,7 @@
 
   // =========================================================================
   // МОДУЛЬ 2: SHELF & DISPATCH ALERT
-  // Отслеживание товаров на отправку, громкий звук и двусторонняя синхронизация вкладок
+  // Отслеживание товаров на отправку, настраиваемые звуки, мерцание и двусторонняя синхронизация
   // =========================================================================
 
   (function initShelfAlert() {
@@ -148,12 +148,20 @@
 
     let isShelfAlertActive = true;
     let shelfAlertVolume = 100;
+    let currentSoundId = 'default';
+    let shelfAlertIntervalMinutes = 10;
+    let soundRepeatLimit = 0;
+    let bannerAnimStyle = 'pulse';
+    let bannerAnimSpeedSec = 1.4;
+    let bannerAnimIntensityPct = 80;
+
     let audioCtx = null;
     let currentShelfCount = 0;
     let lastSyncedStorageCount = -1;
     let hasInitializedCount = false;
     let isReloading = false;
     let isBannerDismissedForCount = 0;
+    let repeatSoundCounter = 0;
 
     // Защита от частых перезагрузок (минимум 12 секунд между перезагрузками одной вкладки)
     let lastReloadTimestamp = 0;
@@ -195,18 +203,31 @@
       }, delay);
     }
 
-    // Синхронизация настроек второго модуля и межвкладочное автообновление
+    // Загрузка настроек второго модуля
     if (typeof chrome !== 'undefined' && chrome.storage?.local) {
       chrome.storage.local.get(
         {
           shelfAlertEnabled: true,
           shelfAlertVolume: 100,
           shelfAlertInterval: 10,
-          shelfCount: 0
+          shelfCount: 0,
+          soundId: 'default',
+          repeatLimit: 0,
+          bannerAnimation: 'pulse',
+          bannerSpeed: 1.4,
+          bannerIntensity: 80
         },
         (data) => {
           isShelfAlertActive = data.shelfAlertEnabled ?? true;
           shelfAlertVolume = Number(data.shelfAlertVolume) || 100;
+          currentSoundId = data.soundId || 'default';
+          shelfAlertIntervalMinutes = Number(data.shelfAlertInterval) || 10;
+          soundRepeatLimit = Number(data.repeatLimit) || 0;
+          bannerAnimStyle = data.bannerAnimation || 'pulse';
+          bannerAnimSpeedSec = Number(data.bannerSpeed) || 1.4;
+          bannerAnimIntensityPct = Number(data.bannerIntensity) || 80;
+
+          applyBannerCustomStyles();
         }
       );
 
@@ -227,12 +248,33 @@
           shelfAlertVolume = Number(changes.shelfAlertVolume.newValue) || 100;
         }
 
-        // =====================================================================
-        // ДВУСТОРОННЯЯ МУЛЬТИ-ВКЛАДОЧНАЯ СИНХРОНИЗАЦИЯ:
-        // Обновляет свернутые вкладки:
-        // 1. Когда товары отправлены (значок пропал, shelfCount = 0)
-        // 2. Когда товары ПОЯВИЛИСЬ на полке (значок появился, shelfCount > 0)
-        // =====================================================================
+        if (changes.soundId !== undefined) {
+          currentSoundId = changes.soundId.newValue || 'default';
+        }
+
+        if (changes.shelfAlertInterval !== undefined) {
+          shelfAlertIntervalMinutes = Number(changes.shelfAlertInterval.newValue) || 10;
+        }
+
+        if (changes.repeatLimit !== undefined) {
+          soundRepeatLimit = Number(changes.repeatLimit.newValue) || 0;
+        }
+
+        // Динамическое применение стилей мерцания без перезагрузки страницы
+        if (changes.bannerAnimation !== undefined) {
+          bannerAnimStyle = changes.bannerAnimation.newValue || 'pulse';
+          applyBannerCustomStyles();
+        }
+        if (changes.bannerSpeed !== undefined) {
+          bannerAnimSpeedSec = Number(changes.bannerSpeed.newValue) || 1.4;
+          applyBannerCustomStyles();
+        }
+        if (changes.bannerIntensity !== undefined) {
+          bannerAnimIntensityPct = Number(changes.bannerIntensity.newValue) || 80;
+          applyBannerCustomStyles();
+        }
+
+        // Двусторонняя синхронизация полки между вкладками
         if (changes.shelfCount !== undefined) {
           const newCount = Number(changes.shelfCount.newValue) || 0;
           const dispatchEl = findDispatchElement();
@@ -243,9 +285,8 @@
           if (newCount === 0) {
             hideTopAlertBanner();
             restoreOriginalTitle();
+            repeatSoundCounter = 0;
 
-            // Если вкладка свернута (в фоне), и в ней всё ещё висит старый счетчик (> 0):
-            // Перезагружаем её в фоне, чтобы интерфейс очистился
             if (document.hidden && currentLocal > 0) {
               triggerBackgroundReload('dispatch_cleared');
             } else {
@@ -254,16 +295,11 @@
           }
           // СЛУЧАЙ 2: Появились новые товары на отправку (newCount > 0)
           else if (newCount > 0) {
-            // Если вкладка активна (оператор сейчас в ней):
             if (!document.hidden) {
               showTopAlertBanner(newCount);
               currentShelfCount = newCount;
               updateDomBadgeVisual(dispatchEl, newCount);
-            }
-            // Если вкладка свернута (в фоне):
-            else {
-              // Если в свернутой вкладке локальный счетчик меньше, чем появилось (например, там еще 0):
-              // Перезагружаем свернутую вкладку в фоне, чтобы Ozon подтянул свежие данные с сервера!
+            } else {
               if (currentLocal < newCount) {
                 triggerBackgroundReload('goods_appeared');
               } else {
@@ -352,7 +388,47 @@
     });
 
     /**
-     * Полноэкранная красная пульсирующая плашка в самом верху экрана
+     * Переход на цепочку «Отправка → Ozon Полка»
+     */
+    function handleDispatchNavigation(e) {
+      if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+
+      if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
+        chrome.runtime.sendMessage({ type: 'OPEN_DISPATCH_PAGE' }, (resp) => {
+          if (chrome.runtime.lastError || !resp?.success) {
+            window.location.href = 'https://turbo-pvz.ozon.ru/outbound/selection';
+          }
+        });
+      } else {
+        window.location.href = 'https://turbo-pvz.ozon.ru/outbound/selection';
+      }
+    }
+
+    /**
+     * Динамическое применение CSS-переменных и классов мерцания к плашке
+     */
+    function applyBannerCustomStyles() {
+      const banner = document.getElementById('ozon-turbo-alert-banner');
+      if (!banner) return;
+
+      banner.style.setProperty('--ota-anim-speed', `${bannerAnimSpeedSec}s`);
+      banner.style.setProperty('--ota-anim-intensity', `${bannerAnimIntensityPct / 100}`);
+
+      banner.classList.remove(
+        'ota-anim-pulse',
+        'ota-anim-glow',
+        'ota-anim-blink',
+        'ota-anim-shake',
+        'ota-anim-none'
+      );
+      banner.classList.add(`ota-anim-${bannerAnimStyle || 'pulse'}`);
+    }
+
+    /**
+     * Полноэкранная плашка в самом верху экрана с настраиваемой анимацией
      */
     function showTopAlertBanner(count) {
       if (isBannerDismissedForCount === count) {
@@ -374,17 +450,90 @@
               z-index: 2147483647 !important;
               background: linear-gradient(90deg, #991b1b 0%, #dc2626 50%, #b91c1c 100%) !important;
               color: #ffffff !important;
-              box-shadow: 0 4px 25px rgba(220, 38, 38, 0.9) !important;
               font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
               padding: 10px 24px !important;
-              animation: ota-pulse 1.4s infinite alternate !important;
               box-sizing: border-box !important;
               border-bottom: 3px solid #fecaca !important;
+              box-shadow: 0 4px 25px rgba(220, 38, 38, 0.9) !important;
+              transform: translateY(-100%) !important;
+              opacity: 0 !important;
+              transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.35s ease !important;
             }
+            #ozon-turbo-alert-banner.ota-visible {
+              transform: translateY(0) !important;
+              opacity: 1 !important;
+            }
+
+            /* 1. Пульсация */
             @keyframes ota-pulse {
-              0% { box-shadow: 0 4px 15px rgba(185, 28, 28, 0.7); filter: brightness(0.95); }
-              100% { box-shadow: 0 6px 32px rgba(239, 68, 68, 1); filter: brightness(1.1); }
+              0% {
+                box-shadow: 0 4px calc(15px * var(--ota-anim-intensity, 0.8)) rgba(185, 28, 28, calc(0.7 * var(--ota-anim-intensity, 0.8))) !important;
+                filter: brightness(calc(1 - 0.06 * var(--ota-anim-intensity, 0.8))) !important;
+              }
+              100% {
+                box-shadow: 0 6px calc(32px * var(--ota-anim-intensity, 0.8)) rgba(239, 68, 68, var(--ota-anim-intensity, 0.8)) !important;
+                filter: brightness(calc(1 + 0.16 * var(--ota-anim-intensity, 0.8))) !important;
+              }
             }
+            #ozon-turbo-alert-banner.ota-anim-pulse {
+              animation: ota-pulse var(--ota-anim-speed, 1.4s) infinite alternate ease-in-out !important;
+            }
+
+            /* 2. Мерцание рамки / свечение */
+            @keyframes ota-glow {
+              0%, 100% {
+                box-shadow: 0 0 calc(8px * var(--ota-anim-intensity, 0.8)) rgba(254, 202, 202, calc(0.4 * var(--ota-anim-intensity, 0.8))), 0 4px 15px rgba(185, 28, 28, 0.7) !important;
+                border-bottom-color: #fecaca !important;
+              }
+              50% {
+                box-shadow: 0 0 calc(30px * var(--ota-anim-intensity, 0.8)) rgba(255, 255, 255, calc(0.9 * var(--ota-anim-intensity, 0.8))), 0 6px 36px rgba(239, 68, 68, 1) !important;
+                border-bottom-color: #ffffff !important;
+              }
+            }
+            #ozon-turbo-alert-banner.ota-anim-glow {
+              animation: ota-glow var(--ota-anim-speed, 1.4s) infinite ease-in-out !important;
+            }
+
+            /* 3. Плавное мигание */
+            @keyframes ota-blink {
+              0%, 100% {
+                opacity: 1 !important;
+              }
+              50% {
+                opacity: calc(1 - 0.6 * var(--ota-anim-intensity, 0.8)) !important;
+              }
+            }
+            #ozon-turbo-alert-banner.ota-anim-blink {
+              animation: ota-blink var(--ota-anim-speed, 1.4s) infinite ease-in-out !important;
+            }
+
+            /* 4. Легкое встряхивание */
+            @keyframes ota-shake {
+              0%, 100% {
+                transform: translateY(0) rotate(0deg) !important;
+              }
+              15% {
+                transform: translateY(calc(-2px * var(--ota-anim-intensity, 0.8))) rotate(calc(-0.4deg * var(--ota-anim-intensity, 0.8))) !important;
+              }
+              30% {
+                transform: translateY(calc(2px * var(--ota-anim-intensity, 0.8))) rotate(calc(0.4deg * var(--ota-anim-intensity, 0.8))) !important;
+              }
+              45% {
+                transform: translateY(calc(-1.5px * var(--ota-anim-intensity, 0.8))) rotate(calc(-0.25deg * var(--ota-anim-intensity, 0.8))) !important;
+              }
+              60% {
+                transform: translateY(0) rotate(0deg) !important;
+              }
+            }
+            #ozon-turbo-alert-banner.ota-anim-shake {
+              animation: ota-shake var(--ota-anim-speed, 1.4s) infinite ease-in-out !important;
+            }
+
+            /* 5. Без анимации */
+            #ozon-turbo-alert-banner.ota-anim-none {
+              animation: none !important;
+            }
+
             .ota-wrap {
               display: flex !important;
               align-items: center !important;
@@ -447,6 +596,9 @@
               background: #fee2e2 !important;
               transform: scale(1.05) !important;
             }
+            .ota-go-btn:active {
+              transform: scale(0.98) !important;
+            }
             .ota-close-btn {
               background: rgba(0, 0, 0, 0.3) !important;
               color: #ffffff !important;
@@ -479,44 +631,45 @@
 
         document.documentElement.appendChild(banner);
 
-        document.getElementById('ota-btn-action')?.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const dispatchEl = findDispatchElement();
-          if (dispatchEl) {
-            dispatchEl.click();
-          }
-        });
+        document.getElementById('ota-btn-action')?.addEventListener('click', handleDispatchNavigation);
 
         document.getElementById('ota-btn-dismiss')?.addEventListener('click', (e) => {
           e.stopPropagation();
           isBannerDismissedForCount = count;
-          banner.style.display = 'none';
+          hideTopAlertBanner();
         });
-      } else {
-        banner.style.display = 'block';
-        const countBadge = document.getElementById('ota-count-val');
-        if (countBadge) countBadge.textContent = `${count} шт`;
       }
+
+      applyBannerCustomStyles();
+
+      const countBadge = document.getElementById('ota-count-val');
+      if (countBadge) countBadge.textContent = `${count} шт`;
+
+      banner.style.display = 'block';
+      // Плавное появление
+      requestAnimationFrame(() => {
+        banner.classList.add('ota-visible');
+      });
     }
 
     function hideTopAlertBanner() {
       const banner = document.getElementById('ozon-turbo-alert-banner');
       if (banner) {
-        banner.style.display = 'none';
+        banner.classList.remove('ota-visible');
+        setTimeout(() => {
+          if (!banner.classList.contains('ota-visible')) {
+            banner.style.display = 'none';
+          }
+        }, 350);
       }
       isBannerDismissedForCount = 0;
     }
 
     /**
-     * СИНТЕЗАТОР ГРОМКОГО КОЛОКОЛЬНОГО ЗВОНКА (D5 -> A5: 587 Гц -> 880 Гц)
-     * С двойным усилением (Boost 2.5x), лимитером и богатыми обертонами.
-     * Защищен от консольных ошибок Autoplay Policy браузера.
+     * Fallback колокольного звонка для прямого воспроизведения в DOM
      */
-    function playTwoToneChime(volumePercent) {
+    function playFallbackChime(volumePercent) {
       try {
-        // Защита от Autoplay Policy:
-        // Если пользователь еще не взаимодействовал с этой вкладкой, не вызываем audioCtx.resume()!
-        // В Chromium это генерирует предупреждение/ошибку "The AudioContext was not allowed to start".
         if (navigator.userActivation && !navigator.userActivation.hasBeenActive) {
           return;
         }
@@ -528,142 +681,54 @@
           audioCtx = new AudioContextClass();
         }
 
-        const startSynthesis = () => {
-          try {
-            const now = audioCtx.currentTime;
-            const vol = Math.max(0, Math.min(100, Number(volumePercent) || 100)) / 100;
-            if (vol <= 0) return;
+        const now = audioCtx.currentTime;
+        const vol = Math.max(0, Math.min(100, Number(volumePercent) || 100)) / 100;
+        if (vol <= 0) return;
 
-            const limiter = audioCtx.createDynamicsCompressor();
-            limiter.threshold.setValueAtTime(-1.0, now);
-            limiter.knee.setValueAtTime(6, now);
-            limiter.ratio.setValueAtTime(12, now);
-            limiter.attack.setValueAtTime(0.002, now);
-            limiter.release.setValueAtTime(0.15, now);
-            limiter.connect(audioCtx.destination);
+        const masterGain = audioCtx.createGain();
+        masterGain.gain.setValueAtTime(vol * 2.0, now);
+        masterGain.connect(audioCtx.destination);
 
-            const masterGain = audioCtx.createGain();
-            masterGain.gain.setValueAtTime(vol * 2.5, now);
-            masterGain.connect(limiter);
-
-            // Тон 1: Ре пятой октавы (D5 ~587 Гц)
-            const osc1 = audioCtx.createOscillator();
-            const gain1 = audioCtx.createGain();
-            osc1.type = 'triangle';
-            osc1.frequency.setValueAtTime(587.33, now);
-            gain1.gain.setValueAtTime(0.001, now);
-            gain1.gain.linearRampToValueAtTime(0.85, now + 0.006);
-            gain1.gain.exponentialRampToValueAtTime(0.01, now + 0.22);
-            osc1.connect(gain1);
-            gain1.connect(masterGain);
-            osc1.start(now);
-            osc1.stop(now + 0.23);
-
-            // Обертон D6 (1174 Гц)
-            const osc1b = audioCtx.createOscillator();
-            const gain1b = audioCtx.createGain();
-            osc1b.type = 'sine';
-            osc1b.frequency.setValueAtTime(1174.66, now);
-            gain1b.gain.setValueAtTime(0.001, now);
-            gain1b.gain.linearRampToValueAtTime(0.45, now + 0.006);
-            gain1b.gain.exponentialRampToValueAtTime(0.005, now + 0.20);
-            osc1b.connect(gain1b);
-            gain1b.connect(masterGain);
-            osc1b.start(now);
-            osc1b.stop(now + 0.21);
-
-            // Тон 2: Ля пятой октавы (A5 ~880 Гц)
-            const t2 = now + 0.16;
-            const t2End = now + 0.82;
-
-            const osc2 = audioCtx.createOscillator();
-            const gain2 = audioCtx.createGain();
-            osc2.type = 'triangle';
-            osc2.frequency.setValueAtTime(880.00, t2);
-            gain2.gain.setValueAtTime(0.001, t2);
-            gain2.gain.linearRampToValueAtTime(0.95, t2 + 0.006);
-            gain2.gain.exponentialRampToValueAtTime(0.0001, t2End);
-            osc2.connect(gain2);
-            gain2.connect(masterGain);
-            osc2.start(t2);
-            osc2.stop(t2End);
-
-            // Обертон A6 (1760 Гц)
-            const osc2b = audioCtx.createOscillator();
-            const gain2b = audioCtx.createGain();
-            osc2b.type = 'sine';
-            osc2b.frequency.setValueAtTime(1760.00, t2);
-            gain2b.gain.setValueAtTime(0.001, t2);
-            gain2b.gain.linearRampToValueAtTime(0.50, t2 + 0.006);
-            gain2b.gain.exponentialRampToValueAtTime(0.0001, t2End - 0.10);
-            osc2b.connect(gain2b);
-            gain2b.connect(masterGain);
-            osc2b.start(t2);
-            osc2b.stop(t2End);
-
-            // Высокий обертон E7 (2637 Гц)
-            const osc2c = audioCtx.createOscillator();
-            const gain2c = audioCtx.createGain();
-            osc2c.type = 'sine';
-            osc2c.frequency.setValueAtTime(2637.02, t2);
-            gain2c.gain.setValueAtTime(0.001, t2);
-            gain2c.gain.linearRampToValueAtTime(0.35, t2 + 0.006);
-            gain2c.gain.exponentialRampToValueAtTime(0.0001, t2End - 0.20);
-            osc2c.connect(gain2c);
-            gain2c.connect(masterGain);
-            osc2c.start(t2);
-            osc2c.stop(t2End);
-          } catch (err) {
-            console.warn('[Ozon PVZ Turbo Assistant] Audio synthesis error:', err);
-          }
-        };
-
-        if (audioCtx.state === 'suspended') {
-          if (!navigator.userActivation || navigator.userActivation.hasBeenActive) {
-            audioCtx.resume().then(() => {
-              if (audioCtx.state === 'running') {
-                startSynthesis();
-              }
-            }).catch(() => { });
-          }
-        } else if (audioCtx.state === 'running') {
-          startSynthesis();
-        }
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(587.33, now);
+        gain.gain.setValueAtTime(0.001, now);
+        gain.gain.linearRampToValueAtTime(0.8, now + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+        osc.connect(gain);
+        gain.connect(masterGain);
+        osc.start(now);
+        osc.stop(now + 0.36);
       } catch (err) {
-        console.warn('[Ozon PVZ Turbo Assistant] Web Audio error:', err);
+        console.warn('[Ozon PVZ Turbo Assistant] Fallback audio error:', err);
       }
     }
 
     /**
-     * Основной триггер воспроизведения звука:
-     * Отправляет команду в Background -> Offscreen Document (AUDIO_PLAYBACK).
-     * Это гарантирует 100% срабатывание без блокировки Autoplay Policy
-     * и предотвращает появление ошибок в панели расширения.
+     * Отправка команды воспроизведения выбранного звука в Background -> Offscreen Document
      */
     function triggerChime(volumePercent) {
       if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
         try {
           chrome.runtime.sendMessage({
             type: 'PLAY_CHIME',
+            soundId: currentSoundId || 'default',
             volume: volumePercent
           }, (resp) => {
             if (chrome.runtime.lastError || (resp && !resp.success)) {
-              // Если background недоступен (например, при локальном тесте без сервис-воркера)
-              playTwoToneChime(volumePercent);
+              playFallbackChime(volumePercent);
             }
           });
           return;
-        } catch {
-          // Fallback
-        }
+        } catch { }
       }
 
-      playTwoToneChime(volumePercent);
+      playFallbackChime(volumePercent);
     }
 
     /**
-     * Умный планировщик воспроизведения звука:
-     * СВЕРНУТЫЕ ВКЛАДКИ ЗВУК НЕ ИЗДАЮТ (document.hidden === true).
+     * Умный шедулер воспроизведения звука с контролем повторов
      */
     function requestChimePlayback(volumePercent, isCountIncrease = false) {
       if (document.hidden) {
@@ -678,6 +743,9 @@
       chrome.storage.local.get({
         shelfAlertEnabled: true,
         shelfAlertInterval: 10,
+        shelfAlertVolume: 100,
+        soundId: 'default',
+        repeatLimit: 0,
         lastGlobalSoundTime: 0
       }, (data) => {
         if (!data.shelfAlertEnabled) return;
@@ -686,29 +754,38 @@
         const intervalMinutes = Number(data.shelfAlertInterval) || 10;
         const intervalMs = intervalMinutes * 60 * 1000;
         const last = Number(data.lastGlobalSoundTime) || 0;
+        const limit = Number(data.repeatLimit) || 0;
+        currentSoundId = data.soundId || 'default';
+        const vol = Number(data.shelfAlertVolume) !== undefined ? Number(data.shelfAlertVolume) : volumePercent;
 
         // Поступили новые товары (увеличение количества)
         if (isCountIncrease) {
-          if (now - last < 3500) {
+          if (now - last < 3000) {
             return;
           }
+          repeatSoundCounter = 1;
           chrome.storage.local.set({ lastGlobalSoundTime: now }, () => {
-            triggerChime(volumePercent);
+            triggerChime(vol);
           });
           return;
         }
 
-        // Периодический повтор (шедулер)
+        // Периодический повтор с ограничением количества раз
+        if (limit > 0 && repeatSoundCounter >= limit) {
+          return;
+        }
+
         if (now - last >= intervalMs) {
+          repeatSoundCounter++;
           chrome.storage.local.set({ lastGlobalSoundTime: now }, () => {
-            triggerChime(volumePercent);
+            triggerChime(vol);
           });
         }
       });
     }
 
     /**
-     * Мигание заголовка вкладки: (🚨 ОТПРАВКА: X шт) <название> <-> обычный заголовок
+     * Мигание заголовка вкладки
      */
     function startTitleBlink(count) {
       if (titleBlinkInterval) return;
@@ -762,39 +839,144 @@
       }
     });
 
+    // =========================================================================
+    // ПАРСИНГ DOM И ФИЛЬТРАЦИЯ ИНДИКАТОРОВ ОТПРАВКИ (ФАЗА 1)
+    // Явно игнорирует блок «Доставка Ozon», исключает ложные срабатывания
+    // =========================================================================
+
     /**
-     * Адаптивный поиск элемента навигации «Отправка» в боковом меню
+     * Проверка, является ли элемент частью блока «Доставка Ozon» или курьерской доставки
+     */
+    function isDeliveryBlock(el) {
+      if (!el || el.nodeType !== 1) return false;
+
+      const checkStr = [
+        el.innerText || '',
+        el.textContent || '',
+        el.getAttribute?.('aria-label') || '',
+        el.getAttribute?.('title') || '',
+        el.getAttribute?.('href') || '',
+        el.className || '',
+        el.id || ''
+      ].join(' ').toLowerCase();
+
+      // Явный фильтр: игнорируем любые вариации Доставка Ozon и доставки
+      if (
+        checkStr.includes('доставка ozon') ||
+        checkStr.includes('доставка озон') ||
+        (checkStr.includes('доставка') && !checkStr.includes('отправка') && !checkStr.includes('полка')) ||
+        checkStr.includes('delivery')
+      ) {
+        return true;
+      }
+
+      return false;
+    }
+
+    /**
+     * Проверка, находится ли элемент внутри родительского блока «Доставка Ozon»
+     */
+    function isInsideDeliveryBlock(el) {
+      let curr = el;
+      while (curr && curr !== document.body && curr !== document.documentElement) {
+        if (isDeliveryBlock(curr)) {
+          return true;
+        }
+        curr = curr.parentElement;
+      }
+      return false;
+    }
+
+    /**
+     * Строгая проверка текстовых индикаторов отправки («Отправка», «Ozon Полка», «Полка Ozon»)
+     * с защитой от частичного совпадения текста с посторонними блоками
+     */
+    function isTargetDispatchText(rawText) {
+      if (!rawText) return false;
+      const text = rawText.trim().toLowerCase();
+
+      // Отсекаем любые блоки доставки
+      if (text.includes('доставка ozon') || text.includes('доставка озон') || text.includes('доставка')) {
+        return false;
+      }
+
+      // Удаляем иконки/эмодзи и замыкающие числа
+      const clean = text
+        .replace(/^[\s\p{Emoji}\p{Symbol}🚚📦🔔•·-]+/gu, '')
+        .replace(/[\d\s+]+$/g, '')
+        .trim();
+
+      // Строгие целевые шаблоны
+      if (/^отправка$/i.test(clean)) return true;
+      if (/^отправка\s+товаров$/i.test(clean)) return true;
+      if (/^(ozon\s*полка|озон\s*полка|полка\s*ozon|полка\s*озон)$/i.test(clean)) return true;
+      if (/^полка$/i.test(clean)) return true;
+      if (/^отправка\s*[—–\-·•]\s*(ozon\s*полка|озон\s*полка)/i.test(clean)) return true;
+      if (/^отправка\s*\(\s*(ozon\s*полка|озон\s*полка)\s*\)/i.test(clean)) return true;
+
+      // Проверка первой строки в многострочных блоках
+      const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+      if (lines.length > 0) {
+        const firstClean = lines[0].replace(/^[\s\p{Emoji}\p{Symbol}🚚📦🔔•·-]+/gu, '').replace(/[\d\s+]+$/g, '').trim();
+        if (/^отправка$/i.test(firstClean) || /^(ozon\s*полка|озон\s*полка|полка\s*ozon|полка\s*озон)$/i.test(firstClean)) {
+          return true;
+        }
+      }
+
+      return false;
+    }
+
+    /**
+     * Адаптивный поиск целевого элемента навигации «Отправка» в боковом меню
      */
     function findDispatchElement() {
+      // 1. Поиск прямой ссылки по целевому URL цепочки отправки
+      const outboundLinks = document.querySelectorAll('a[href*="/outbound"], a[href*="outbound"]');
+      for (const link of outboundLinks) {
+        if (!isInsideDeliveryBlock(link)) {
+          return link;
+        }
+      }
+
+      // 2. Поиск в навигационных меню и сайдбарах
       const navContainers = document.querySelectorAll(
         'aside, nav, [role="navigation"], [class*="sidebar"], [class*="aside"], [class*="menu"], [class*="navbar"]'
       );
 
       for (const container of navContainers) {
-        const items = container.querySelectorAll('a, button, li, [role="menuitem"], [class*="item"], div');
+        const items = container.querySelectorAll('a, button, li, [role="menuitem"], [class*="item"]');
         for (const el of items) {
-          if (el.children.length > 5) continue;
+          if (isInsideDeliveryBlock(el)) continue;
+          if (el.children.length > 6) continue;
+
           const text = (el.innerText || el.textContent || '').trim();
-          if (/^отправка\b/i.test(text) || (text.toLowerCase().includes('отправка') && text.length < 25)) {
+          if (isTargetDispatchText(text)) {
             return el;
           }
         }
       }
 
+      // 3. Глобальный поиск ссылок и кнопок
       const globalLinks = document.querySelectorAll('a, button, li, [role="menuitem"]');
       for (const el of globalLinks) {
+        if (isInsideDeliveryBlock(el)) continue;
         const text = (el.innerText || el.textContent || '').trim();
-        if (/^отправка\b/i.test(text) || (text.toLowerCase().includes('отправка') && text.length < 25)) {
+        if (isTargetDispatchText(text)) {
           return el;
         }
       }
 
+      // 4. Текстовые узлы (fallback для кастомных компонентов Турбо ПВЗ)
       const textNodes = document.querySelectorAll('span, p, div');
       for (const el of textNodes) {
+        if (isInsideDeliveryBlock(el)) continue;
         if (el.children.length > 2) continue;
         const text = (el.textContent || '').trim();
-        if (/^отправка$/i.test(text)) {
-          return el.closest('a, button, li, [role="menuitem"], [class*="item"]') || el.parentElement || el;
+        if (isTargetDispatchText(text)) {
+          const parentCandidate = el.closest('a, button, li, [role="menuitem"], [class*="item"]') || el.parentElement || el;
+          if (!isInsideDeliveryBlock(parentCandidate)) {
+            return parentCandidate;
+          }
         }
       }
 
@@ -802,10 +984,10 @@
     }
 
     /**
-     * Поиск бейджа/индикатора с числом > 0
+     * Поиск бейджа/индикатора с числом > 0 СТРОГО в пределах целевого блока отправки
      */
     function getBadgeCount(dispatchEl) {
-      if (!dispatchEl) return 0;
+      if (!dispatchEl || isInsideDeliveryBlock(dispatchEl)) return 0;
 
       const badgeSelectors = [
         '[class*="badge"]',
@@ -820,50 +1002,62 @@
         '[data-testid*="count"]'
       ];
 
-      const badgeEls = dispatchEl.querySelectorAll(badgeSelectors.join(', '));
-      for (const b of badgeEls) {
-        if (b.offsetParent === null && b.style.display === 'none') {
-          continue;
-        }
-        const text = b.textContent.trim();
-        const match = text.match(/(\d+)/);
+      function parseNumber(str) {
+        if (!str) return 0;
+        const match = str.trim().match(/(\d+)/);
         if (match) {
           const num = parseInt(match[1], 10);
-          if (!isNaN(num) && num > 0) return num;
+          if (!isNaN(num) && num > 0 && num < 100000) {
+            return num;
+          }
         }
+        return 0;
       }
 
-      if (dispatchEl.parentElement) {
-        const parentBadges = dispatchEl.parentElement.querySelectorAll(badgeSelectors.join(', '));
-        for (const b of parentBadges) {
-          if (b === dispatchEl) continue;
-          if (b.offsetParent === null && b.style.display === 'none') continue;
-          const text = b.textContent.trim();
-          const match = text.match(/(\d+)/);
-          if (match) {
-            const num = parseInt(match[1], 10);
-            if (!isNaN(num) && num > 0) return num;
+      // 1. Поиск бейджа СТРОГО внутри самого элемента отправки
+      const badgeEls = dispatchEl.querySelectorAll(badgeSelectors.join(', '));
+      for (const b of badgeEls) {
+        if (isInsideDeliveryBlock(b)) continue;
+        if (b.offsetParent === null && b.style.display === 'none') continue;
+        const count = parseNumber(b.textContent);
+        if (count > 0) return count;
+      }
+
+      // 2. Если dispatchEl — это span/заголовок внутри своего конкретного li/menu-item:
+      const itemWrapper = dispatchEl.closest('li, [role="menuitem"], .menu-item');
+      if (itemWrapper && itemWrapper !== dispatchEl && !isInsideDeliveryBlock(itemWrapper)) {
+        const wrapperText = (itemWrapper.innerText || '').toLowerCase();
+        if (!wrapperText.includes('доставка') && (wrapperText.includes('отправка') || wrapperText.includes('полка'))) {
+          const wrapperBadges = itemWrapper.querySelectorAll(badgeSelectors.join(', '));
+          for (const b of wrapperBadges) {
+            if (isInsideDeliveryBlock(b)) continue;
+            if (b.offsetParent === null && b.style.display === 'none') continue;
+            const count = parseNumber(b.textContent);
+            if (count > 0) return count;
           }
         }
       }
 
+      // 3. Дочерние элементы самого dispatchEl на предмет одиночного числа
       const allElements = [dispatchEl, ...dispatchEl.querySelectorAll('*')];
       for (const el of allElements) {
+        if (isInsideDeliveryBlock(el)) continue;
         if (el.offsetParent === null && el.style.display === 'none') continue;
         const text = (el.innerText || el.textContent || '').trim();
         if (/^\d+\+?$/.test(text)) {
           const num = parseInt(text, 10);
-          if (!isNaN(num) && num > 0 && num < 10000) {
+          if (!isNaN(num) && num > 0 && num < 100000) {
             return num;
           }
         }
       }
 
+      // 4. Текстовый regex строго по названию отправки: «Отправка: 3» или «Отправка 3»
       const fullText = (dispatchEl.innerText || dispatchEl.textContent || '').trim();
-      const textMatch = fullText.match(/отправка[^\d]*(\d+)/i);
+      const textMatch = fullText.match(/(?:отправка|полка)[^\d\wа-яё]*(\d+)/i);
       if (textMatch) {
         const num = parseInt(textMatch[1], 10);
-        if (!isNaN(num) && num > 0 && num < 10000) {
+        if (!isNaN(num) && num > 0 && num < 100000) {
           return num;
         }
       }
@@ -893,6 +1087,7 @@
               hideTopAlertBanner();
               restoreOriginalTitle();
               currentShelfCount = 0;
+              repeatSoundCounter = 0;
               triggerBackgroundReload('sync_cleared');
               return;
             }
@@ -953,6 +1148,7 @@
         } else {
           hideTopAlertBanner();
           restoreOriginalTitle();
+          repeatSoundCounter = 0;
         }
       }
 

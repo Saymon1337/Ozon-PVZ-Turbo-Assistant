@@ -20,96 +20,227 @@
             <span id="themeIcon">🌙</span>
             <span id="themeLabel">Темная</span>
           </button>
-          <span class="version-badge">v2.0.1</span>
+          <span class="version-badge">v2.1.0</span>
         </div>
       </div>
       <div class="brand-subtitle">Для сотрудников Турбо ПВЗ Ozon • Saymon1337</div>
+
+      <!-- Вкладки навигации -->
+      <nav class="tab-nav">
+        <button type="button" class="tab-btn active" id="tabBtnMain">
+          <span>⚡ Главная</span>
+        </button>
+        <button type="button" class="tab-btn" id="tabBtnAdvanced">
+          <span>⚙️ Расширенные настройки</span>
+        </button>
+      </nav>
     </header>
 
-    <!-- БЛОК 1: Защита сканера («Честный Знак») -->
-    <section class="card module-card">
-      <div class="card-header">
-        <div class="module-title-wrap">
-          <span class="module-icon">🛡️</span>
-          <div>
-            <h2 class="module-title">Защита сканера</h2>
-            <span class="module-subtitle">«Честный Знак» (F12, Ctrl+U, Ctrl+Shift+I)</span>
+    <!-- ВКЛАДКА 1: Главная (Быстрый режим) -->
+    <main class="tab-content active" id="tabContentMain">
+      <!-- БЛОК 1: Защита сканера («Честный Знак») -->
+      <section class="card module-card">
+        <div class="card-header">
+          <div class="module-title-wrap">
+            <span class="module-icon">🛡️</span>
+            <div>
+              <h2 class="module-title">Защита сканера</h2>
+              <span class="module-subtitle">«Честный Знак» (F12, Ctrl+U, Ctrl+Shift+I)</span>
+            </div>
           </div>
+          <label class="switch" title="Вкл / Выкл перехват сбоев сканера">
+            <input type="checkbox" id="toggleGuard" checked>
+            <span class="slider"></span>
+          </label>
         </div>
-        <label class="switch" title="Вкл / Выкл перехват сбоев сканера">
-          <input type="checkbox" id="toggleGuard" checked>
-          <span class="slider"></span>
-        </label>
-      </div>
 
-      <div class="stats-panel">
-        <div class="stats-data">
-          <span class="count-value" id="blockedCount">0</span>
-          <span class="count-caption">сбоев предотвращено</span>
+        <div class="stats-panel">
+          <div class="stats-data">
+            <span class="count-value" id="blockedCount">0</span>
+            <span class="count-caption">сбоев предотвращено</span>
+          </div>
+          <button type="button" class="btn-reset" id="resetBtn" title="Сбросить счетчик сбоев">
+            Сброс
+          </button>
         </div>
-        <button type="button" class="btn-reset" id="resetBtn" title="Сбросить счетчик сбоев">
-          Сброс
+      </section>
+
+      <!-- БЛОК 2: Оповещение об отправке -->
+      <section class="card module-card">
+        <div class="card-header">
+          <div class="module-title-wrap">
+            <span class="module-icon">🔔</span>
+            <div>
+              <h2 class="module-title">Оповещение об отправке</h2>
+              <span class="module-subtitle">Звук, верхняя плашка и мигание вкладки</span>
+            </div>
+          </div>
+          <label class="switch" title="Вкл / Выкл оповещения об отправке">
+            <input type="checkbox" id="shelfToggle" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <!-- Отображение текущего количества на полке -->
+        <div class="shelf-status-box" id="shelfStatusBox">
+          <div class="shelf-info">
+            <span class="shelf-label">На полке отправки:</span>
+            <span class="shelf-count" id="shelfCount">0 шт</span>
+          </div>
+          <span class="shelf-badge ready" id="shelfBadge">Полка пуста</span>
+        </div>
+
+        <!-- Кнопка быстрого перехода к отправке -->
+        <button type="button" class="btn-dispatch-link" id="openDispatchBtn" title="Открыть цепочку Отправка → Ozon Полка">
+          📦 Открыть «Отправку» (Ozon Полка)
         </button>
-      </div>
-    </section>
 
-    <!-- БЛОК 2: Оповещение об отправке -->
-    <section class="card module-card">
-      <div class="card-header">
-        <div class="module-title-wrap">
-          <span class="module-icon">🔔</span>
-          <div>
-            <h2 class="module-title">Оповещение об отправке</h2>
-            <span class="module-subtitle">Звук, верхняя плашка и мигание вкладки</span>
+        <!-- Быстрый выбор звука и громкости -->
+        <div class="quick-controls-box">
+          <div class="control-header-row">
+            <span class="control-label">🔊 Быстрая громкость</span>
+            <span class="volume-val" id="volumeValQuick">100%</span>
+          </div>
+          <input type="range" id="volumeSliderQuick" class="range-slider" min="0" max="100" value="100" step="5">
+
+          <div class="quick-actions-row">
+            <button type="button" class="btn-action-outline" id="quickTestSoundBtn">
+              ▶ Проверить сигнал
+            </button>
+            <button type="button" class="btn-action-text" id="goToAdvancedBtn">
+              ⚙️ Настроить плашку и интервалы →
+            </button>
           </div>
         </div>
-        <label class="switch" title="Вкл / Выкл оповещения об отправке">
-          <input type="checkbox" id="shelfToggle" checked>
-          <span class="slider"></span>
-        </label>
-      </div>
+      </section>
+    </main>
 
-      <!-- Отображение текущего количества на полке -->
-      <div class="shelf-status-box" id="shelfStatusBox">
-        <div class="shelf-info">
-          <span class="shelf-label">На полке отправки:</span>
-          <span class="shelf-count" id="shelfCount">0 шт</span>
+    <!-- ВКЛАДКА 2: Расширенные настройки -->
+    <section class="tab-content" id="tabContentAdvanced">
+      <!-- 1. Настройка звука -->
+      <section class="card module-card">
+        <div class="card-section-title">
+          <span class="section-icon">🔊</span>
+          <span class="section-text">Выбор звукового сигнала (10 вариантов)</span>
         </div>
-        <span class="shelf-badge ready" id="shelfBadge">Полка пуста</span>
-      </div>
 
-      <!-- Настройка громкости -->
-      <div class="control-group">
-        <div class="control-header-row">
-          <span class="control-label">🔊 Громкость сигнала</span>
-          <span class="volume-val" id="volumeVal">100%</span>
-        </div>
-        <input type="range" id="volumeSlider" class="range-slider" min="10" max="100" value="100" step="5">
-      </div>
-
-      <!-- Интервал повтора напоминания -->
-      <div class="control-group">
-        <div class="control-header-row">
-          <span class="control-label">⏱️ Повтор напоминания</span>
-          <select id="intervalSelect" class="interval-select" title="Интервал между повторными сигналами">
-            <option value="2">Каждые 2 мин</option>
-            <option value="5">Каждые 5 мин</option>
-            <option value="10" selected>Каждые 10 мин</option>
-            <option value="15">Каждые 15 мин</option>
+        <div class="control-group">
+          <label for="soundSelect" class="control-label">Тип звукового оповещения:</label>
+          <select id="soundSelect" class="styled-select">
+            <option value="default" selected>🔔 Стандартный звонок (D5 → A5)</option>
+            <option value="soft_chime">🌸 Мягкий колокольчик</option>
+            <option value="double_beep">⚡ Двойной бип</option>
+            <option value="urgent_siren">🚨 Срочная сирена</option>
+            <option value="melodic_chord">🎵 Мелодичный аккорд</option>
+            <option value="retro_signal">👾 Ретро-сигнал (8-bit)</option>
+            <option value="crystal_bell">💎 Кристальный звон</option>
+            <option value="short_click">⏱️ Короткий щелчок</option>
+            <option value="subtle_ping">✨ Нежный пинг</option>
+            <option value="radar_sonar">📡 Радар / Сонар</option>
           </select>
         </div>
-      </div>
 
-      <!-- Кнопка теста звука -->
-      <button type="button" class="btn-test-sound" id="testSoundBtn">
-        🔊 Тест громкого звука (D5 → A5)
-      </button>
+        <div class="control-group">
+          <div class="control-header-row">
+            <span class="control-label">Громкость сигнала</span>
+            <span class="volume-val" id="volumeVal">100%</span>
+          </div>
+          <input type="range" id="volumeSlider" class="range-slider" min="0" max="100" value="100" step="5">
+        </div>
+
+        <button type="button" class="btn-test-sound" id="testSoundBtn">
+          ▶ Прослушать выбранный звук
+        </button>
+      </section>
+
+      <!-- 2. Повтор напоминаний -->
+      <section class="card module-card">
+        <div class="card-section-title">
+          <span class="section-icon">⏱️</span>
+          <span class="section-text">Интервал и лимит повторов</span>
+        </div>
+
+        <div class="control-group">
+          <div class="control-header-row">
+            <span class="control-label">Интервал повтора напоминания:</span>
+            <span class="value-badge" id="intervalVal">10 мин</span>
+          </div>
+          <input type="range" id="intervalSlider" class="range-slider" min="1" max="30" value="10" step="1">
+        </div>
+
+        <div class="control-group">
+          <label for="repeatLimitSelect" class="control-label">Ограничение количества повторов:</label>
+          <select id="repeatLimitSelect" class="styled-select">
+            <option value="0" selected>♾️ Без ограничений (пока полка не пуста)</option>
+            <option value="1">1️⃣ Только 1 раз (при появлении)</option>
+            <option value="3">3️⃣ Не более 3 раз</option>
+            <option value="5">5️⃣ Не более 5 раз</option>
+            <option value="10">🔟 Не более 10 раз</option>
+          </select>
+        </div>
+      </section>
+
+      <!-- 3. Мерцание и анимация плашки -->
+      <section class="card module-card">
+        <div class="card-section-title">
+          <span class="section-icon">✨</span>
+          <span class="section-text">Анимация и мерцание плашки</span>
+        </div>
+
+        <div class="control-group">
+          <label for="animStyleSelect" class="control-label">Эффект привлечения внимания:</label>
+          <select id="animStyleSelect" class="styled-select">
+            <option value="pulse" selected>💫 Пульсация (Стандарт Ozon)</option>
+            <option value="glow">🌟 Мерцание рамки / свечение</option>
+            <option value="blink">💡 Плавное мигание</option>
+            <option value="shake">📳 Легкое встряхивание</option>
+            <option value="none">⏹️ Без анимации (статичная)</option>
+          </select>
+        </div>
+
+        <div class="control-group">
+          <div class="control-header-row">
+            <span class="control-label">Скорость / частота мерцания:</span>
+            <span class="value-badge" id="animSpeedVal">1.4 сек</span>
+          </div>
+          <input type="range" id="animSpeedSlider" class="range-slider" min="0.4" max="3.0" value="1.4" step="0.1">
+        </div>
+
+        <div class="control-group">
+          <div class="control-header-row">
+            <span class="control-label">Интенсивность / яркость:</span>
+            <span class="value-badge" id="animIntensityVal">80%</span>
+          </div>
+          <input type="range" id="animIntensitySlider" class="range-slider" min="20" max="100" value="80" step="5">
+        </div>
+
+        <!-- LIVE PREVIEW БЛОК -->
+        <div class="live-preview-box">
+          <div class="live-preview-header">
+            <span class="live-preview-title">👁️ Предпросмотр плашки на сайте</span>
+            <span class="live-tag">LIVE</span>
+          </div>
+          <div class="live-preview-stage">
+            <div id="liveBannerPreview" class="live-banner ota-anim-pulse" style="--ota-anim-speed: 1.4s; --ota-anim-intensity: 0.8;">
+              <div class="live-banner-content">
+                <span class="live-banner-icon">🚨</span>
+                <span class="live-banner-text">ОТПРАВКА:<span class="live-badge">3 шт</span></span>
+                <span class="live-btn-fake">📦 Открыть</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <button type="button" class="btn-reset-defaults" id="resetDefaultsBtn">
+          ↺ Сбросить настройки по умолчанию
+        </button>
+      </section>
     </section>
 
     <!-- Подвал -->
     <footer class="app-footer">
       <div class="footer-title">OZON PVZ: TURBO ASSISTANT</div>
-      <div class="footer-dev">Версия 2.0.1 • Автор: Saymon1337</div>
+      <div class="footer-dev">Версия 2.1.0 • Автор: Saymon1337</div>
     </footer>
   </div>
 

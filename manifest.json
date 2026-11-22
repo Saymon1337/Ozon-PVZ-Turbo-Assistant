@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Ozon PVZ: Turbo Assistant (Защита сканера + Оповещение об отправке)",
-  "version": "2.0.1",
+  "version": "2.1.0",
   "description": "Комплексный помощник для сотрудников Турбо ПВЗ Ozon: блокировка сбоев сканера («Честный Знак») и умные оповещения об отправке товаров.",
   "icons": {
     "16": "icon.png",
@@ -10,7 +10,8 @@
   },
   "permissions": [
     "storage",
-    "offscreen"
+    "offscreen",
+    "tabs"
   ],
   "host_permissions": [
     "*://turbo-pvz.ozon.ru/*",

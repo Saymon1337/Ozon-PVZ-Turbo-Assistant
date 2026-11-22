@@ -1,36 +1,67 @@
 /**
- * Ozon PVZ: Turbo Assistant — Popup Script (v2.0.1)
- * Управление защитой сканера, громкими оповещениями об отправке и темами
+ * Ozon PVZ: Turbo Assistant — Popup Script (v2.1.0)
+ * Управление защитой сканера, расширенными оповещениями об отправке,
+ * Live Preview мерцания и темами оформления.
+ * 
  * Разработчик: Saymon1337
  */
 
 document.addEventListener('DOMContentLoaded', () => {
-  // Элементы темы оформления
+  // Элементы темы
   const themeToggleBtn = document.getElementById('themeToggleBtn');
   const themeIcon = document.getElementById('themeIcon');
   const themeLabel = document.getElementById('themeLabel');
 
-  // Элементы модуля 1 (Защита сканера)
+  // Вкладки
+  const tabBtnMain = document.getElementById('tabBtnMain');
+  const tabBtnAdvanced = document.getElementById('tabBtnAdvanced');
+  const tabContentMain = document.getElementById('tabContentMain');
+  const tabContentAdvanced = document.getElementById('tabContentAdvanced');
+  const goToAdvancedBtn = document.getElementById('goToAdvancedBtn');
+
+  // Модуль 1: Защита сканера
   const toggleGuard = document.getElementById('toggleGuard');
   const blockedCountEl = document.getElementById('blockedCount');
   const resetBtn = document.getElementById('resetBtn');
   const statusDot = document.getElementById('statusDot');
 
-  // Элементы модуля 2 (Оповещение об отправке)
+  // Модуль 2: Оповещение об отправке (Главный экран)
   const shelfToggle = document.getElementById('shelfToggle');
   const shelfCountEl = document.getElementById('shelfCount');
   const shelfBadgeEl = document.getElementById('shelfBadge');
+  const openDispatchBtn = document.getElementById('openDispatchBtn');
+
+  // Быстрые контролы (Главный экран)
+  const volumeSliderQuick = document.getElementById('volumeSliderQuick');
+  const volumeValQuick = document.getElementById('volumeValQuick');
+  const quickTestSoundBtn = document.getElementById('quickTestSoundBtn');
+
+  // Расширенные настройки: Звук
+  const soundSelect = document.getElementById('soundSelect');
   const volumeSlider = document.getElementById('volumeSlider');
   const volumeValEl = document.getElementById('volumeVal');
-  const intervalSelect = document.getElementById('intervalSelect');
   const testSoundBtn = document.getElementById('testSoundBtn');
+
+  // Расширенные настройки: Повторы
+  const intervalSlider = document.getElementById('intervalSlider');
+  const intervalValEl = document.getElementById('intervalVal');
+  const repeatLimitSelect = document.getElementById('repeatLimitSelect');
+
+  // Расширенные настройки: Мерцание плашки
+  const animStyleSelect = document.getElementById('animStyleSelect');
+  const animSpeedSlider = document.getElementById('animSpeedSlider');
+  const animSpeedValEl = document.getElementById('animSpeedVal');
+  const animIntensitySlider = document.getElementById('animIntensitySlider');
+  const animIntensityValEl = document.getElementById('animIntensityVal');
+  const liveBannerPreview = document.getElementById('liveBannerPreview');
+  const resetDefaultsBtn = document.getElementById('resetDefaultsBtn');
 
   let popupAudioCtx = null;
   let currentTheme = 'dark';
 
-  /**
-   * Применение темы оформления (Светлая / Темная)
-   */
+  // =========================================================================
+  // ТЕМА ОФОРМЛЕНИЯ
+  // =========================================================================
   function applyTheme(theme) {
     currentTheme = theme === 'light' ? 'light' : 'dark';
     if (currentTheme === 'light') {
@@ -44,138 +75,63 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Переключение темы по клику
   themeToggleBtn.addEventListener('click', () => {
     const nextTheme = currentTheme === 'dark' ? 'light' : 'dark';
     applyTheme(nextTheme);
     chrome.storage.local.set({ theme: nextTheme });
   });
 
-  /**
-   * СИНТЕЗАТОР ГРОМКОГО КОЛОКОЛЬНОГО ЗВОНКА (D5 -> A5: 587 Гц -> 880 Гц)
-   * С двойным усилением (Boost 2.5x), лимитером и богатыми обертонами (1174, 1760, 2637 Гц).
-   */
-  function playChime(volumePercent) {
-    try {
-      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-      if (!AudioContextClass) return;
-
-      if (!popupAudioCtx || popupAudioCtx.state === 'closed') {
-        popupAudioCtx = new AudioContextClass();
-      }
-
-      const startSynthesis = () => {
-        try {
-          const now = popupAudioCtx.currentTime;
-          const vol = Math.max(0, Math.min(100, Number(volumePercent) || 100)) / 100;
-          if (vol <= 0) return;
-
-          // Лимитер от перегрузки при усилении
-          const limiter = popupAudioCtx.createDynamicsCompressor();
-          limiter.threshold.setValueAtTime(-1.0, now);
-          limiter.knee.setValueAtTime(6, now);
-          limiter.ratio.setValueAtTime(12, now);
-          limiter.attack.setValueAtTime(0.002, now);
-          limiter.release.setValueAtTime(0.15, now);
-          limiter.connect(popupAudioCtx.destination);
-
-          // Мастер-усилитель (Boost 2.5x)
-          const masterGain = popupAudioCtx.createGain();
-          masterGain.gain.setValueAtTime(vol * 2.5, now);
-          masterGain.connect(limiter);
-
-          // Тон 1: Ре пятой октавы (D5: ~587 Гц, Triangle)
-          const osc1 = popupAudioCtx.createOscillator();
-          const gain1 = popupAudioCtx.createGain();
-          osc1.type = 'triangle';
-          osc1.frequency.setValueAtTime(587.33, now);
-          gain1.gain.setValueAtTime(0.001, now);
-          gain1.gain.linearRampToValueAtTime(0.85, now + 0.006);
-          gain1.gain.exponentialRampToValueAtTime(0.01, now + 0.22);
-          osc1.connect(gain1);
-          gain1.connect(masterGain);
-          osc1.start(now);
-          osc1.stop(now + 0.23);
-
-          // Обертон D6 (1174 Гц, Sine)
-          const osc1b = popupAudioCtx.createOscillator();
-          const gain1b = popupAudioCtx.createGain();
-          osc1b.type = 'sine';
-          osc1b.frequency.setValueAtTime(1174.66, now);
-          gain1b.gain.setValueAtTime(0.001, now);
-          gain1b.gain.linearRampToValueAtTime(0.45, now + 0.006);
-          gain1b.gain.exponentialRampToValueAtTime(0.005, now + 0.20);
-          osc1b.connect(gain1b);
-          gain1b.connect(masterGain);
-          osc1b.start(now);
-          osc1b.stop(now + 0.21);
-
-          // Тон 2: Ля пятой октавы (A5: 880 Гц, Triangle)
-          const t2 = now + 0.16;
-          const t2End = now + 0.82;
-
-          const osc2 = popupAudioCtx.createOscillator();
-          const gain2 = popupAudioCtx.createGain();
-          osc2.type = 'triangle';
-          osc2.frequency.setValueAtTime(880.00, t2);
-          gain2.gain.setValueAtTime(0.001, t2);
-          gain2.gain.linearRampToValueAtTime(0.95, t2 + 0.006);
-          gain2.gain.exponentialRampToValueAtTime(0.0001, t2End);
-          osc2.connect(gain2);
-          gain2.connect(masterGain);
-          osc2.start(t2);
-          osc2.stop(t2End);
-
-          // Обертон A6 (1760 Гц, Sine)
-          const osc2b = popupAudioCtx.createOscillator();
-          const gain2b = popupAudioCtx.createGain();
-          osc2b.type = 'sine';
-          osc2b.frequency.setValueAtTime(1760.00, t2);
-          gain2b.gain.setValueAtTime(0.001, t2);
-          gain2b.gain.linearRampToValueAtTime(0.50, t2 + 0.006);
-          gain2b.gain.exponentialRampToValueAtTime(0.0001, t2End - 0.10);
-          osc2b.connect(gain2b);
-          gain2b.connect(masterGain);
-          osc2b.start(t2);
-          osc2b.stop(t2End);
-
-          // Высокий обертон E7 (2637 Гц, Sine - максимальная слышимость)
-          const osc2c = popupAudioCtx.createOscillator();
-          const gain2c = popupAudioCtx.createGain();
-          osc2c.type = 'sine';
-          osc2c.frequency.setValueAtTime(2637.02, t2);
-          gain2c.gain.setValueAtTime(0.001, t2);
-          gain2c.gain.linearRampToValueAtTime(0.35, t2 + 0.006);
-          gain2c.gain.exponentialRampToValueAtTime(0.0001, t2End - 0.20);
-          osc2c.connect(gain2c);
-          gain2c.connect(masterGain);
-          osc2c.start(t2);
-          osc2c.stop(t2End);
-        } catch (err) {
-          console.warn('[Popup] Audio synthesis error:', err);
-        }
-      };
-
-      if (popupAudioCtx.state === 'suspended') {
-        popupAudioCtx.resume().then(() => {
-          if (popupAudioCtx.state === 'running') {
-            startSynthesis();
-          }
-        }).catch(() => { });
-      } else {
-        startSynthesis();
-      }
-    } catch (err) {
-      console.warn('[Popup] Web Audio error:', err);
+  // =========================================================================
+  // ПЕРЕКЛЮЧЕНИЕ ВКЛАДОК
+  // =========================================================================
+  function switchTab(tabName) {
+    if (tabName === 'advanced') {
+      tabBtnMain.classList.remove('active');
+      tabBtnAdvanced.classList.add('active');
+      tabContentMain.classList.remove('active');
+      tabContentAdvanced.classList.add('active');
+    } else {
+      tabBtnAdvanced.classList.remove('active');
+      tabBtnMain.classList.add('active');
+      tabContentAdvanced.classList.remove('active');
+      tabContentMain.classList.add('active');
     }
   }
 
+  tabBtnMain.addEventListener('click', () => switchTab('main'));
+  tabBtnAdvanced.addEventListener('click', () => switchTab('advanced'));
+  if (goToAdvancedBtn) {
+    goToAdvancedBtn.addEventListener('click', () => switchTab('advanced'));
+  }
+
+  // =========================================================================
+  // ИНТЕРАКТИВНЫЙ LIVE PREVIEW ПЛАШКИ
+  // =========================================================================
+  function updateLivePreview(style, speed, intensity) {
+    if (!liveBannerPreview) return;
+
+    liveBannerPreview.style.setProperty('--ota-anim-speed', `${speed}s`);
+    liveBannerPreview.style.setProperty('--ota-anim-intensity', `${intensity / 100}`);
+
+    liveBannerPreview.classList.remove(
+      'ota-anim-pulse',
+      'ota-anim-glow',
+      'ota-anim-blink',
+      'ota-anim-shake',
+      'ota-anim-none'
+    );
+    liveBannerPreview.classList.add(`ota-anim-${style}`);
+  }
+
+  // =========================================================================
+  // СТАТУС И ОТОБРАЖЕНИЕ ПОЛКИ
+  // =========================================================================
   function updateShelfDisplay(count) {
     const num = Number(count) || 0;
     shelfCountEl.textContent = `${num} шт`;
 
     if (num > 0) {
-      shelfCountEl.style.color = 'var(--accent-red)';
+      shelfCountEl.style.color = 'var(--ozon-magenta)';
       shelfBadgeEl.className = 'shelf-badge alert';
       shelfBadgeEl.textContent = 'Требует отправки';
     } else {
@@ -194,7 +150,88 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // 1. Слушаем прямые сообщения от content.js для мгновенного обновления счетчика без задержек
+  // =========================================================================
+  // WEB AUDIO СИНТЕЗАТОР (FALLBACK ДЛЯ POPUP)
+  // =========================================================================
+  function playPopupChime(soundId, volumePercent) {
+    try {
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextClass) return;
+
+      if (!popupAudioCtx || popupAudioCtx.state === 'closed') {
+        popupAudioCtx = new AudioContextClass();
+      }
+
+      const start = () => {
+        try {
+          const now = popupAudioCtx.currentTime;
+          const vol = Math.max(0, Math.min(100, Number(volumePercent) || 100)) / 100;
+          if (vol <= 0) return;
+
+          const master = popupAudioCtx.createGain();
+          master.gain.setValueAtTime(vol * 2.2, now);
+          master.connect(popupAudioCtx.destination);
+
+          // Простой приятный звук для предпрослушивания в случае отсутствия offscreen
+          const osc1 = popupAudioCtx.createOscillator();
+          const gain1 = popupAudioCtx.createGain();
+          osc1.type = 'triangle';
+          osc1.frequency.setValueAtTime(587.33, now);
+          gain1.gain.setValueAtTime(0.001, now);
+          gain1.gain.linearRampToValueAtTime(0.8, now + 0.008);
+          gain1.gain.exponentialRampToValueAtTime(0.01, now + 0.22);
+          osc1.connect(gain1);
+          gain1.connect(master);
+          osc1.start(now);
+          osc1.stop(now + 0.23);
+
+          const osc2 = popupAudioCtx.createOscillator();
+          const gain2 = popupAudioCtx.createGain();
+          osc2.type = 'triangle';
+          osc2.frequency.setValueAtTime(880.00, now + 0.16);
+          gain2.gain.setValueAtTime(0.001, now + 0.16);
+          gain2.gain.linearRampToValueAtTime(0.9, now + 0.168);
+          gain2.gain.exponentialRampToValueAtTime(0.0001, now + 0.8);
+          osc2.connect(gain2);
+          gain2.connect(master);
+          osc2.start(now + 0.16);
+          osc2.stop(now + 0.82);
+        } catch (e) {
+          console.warn('[Popup Audio] Synth error:', e);
+        }
+      };
+
+      if (popupAudioCtx.state === 'suspended') {
+        popupAudioCtx.resume().then(start).catch(() => { });
+      } else {
+        start();
+      }
+    } catch (e) {
+      console.warn('[Popup Audio] Context error:', e);
+    }
+  }
+
+  function playSelectedSound(soundId, volumePercent) {
+    if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
+      chrome.runtime.sendMessage({
+        type: 'PLAY_CHIME',
+        soundId: soundId,
+        volume: volumePercent
+      }, (res) => {
+        if (chrome.runtime.lastError || !res?.success) {
+          playPopupChime(soundId, volumePercent);
+        }
+      });
+    } else {
+      playPopupChime(soundId, volumePercent);
+    }
+  }
+
+  // =========================================================================
+  // СИНХРОНИЗАЦИЯ С CHROME.STORAGE.LOCAL
+  // =========================================================================
+
+  // Слушаем прямое обновление счетчика сбоев от content.js
   if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage) {
     chrome.runtime.onMessage.addListener((msg) => {
       if (msg?.type === 'BLOCKED_COUNT_UPDATED') {
@@ -204,7 +241,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 2. Читаем начальные значения из chrome.storage.local
+  // Загружаем сохраненные настройки
   chrome.storage.local.get(
     {
       enabled: true,
@@ -213,102 +250,245 @@ document.addEventListener('DOMContentLoaded', () => {
       shelfAlertVolume: 100,
       shelfAlertInterval: 10,
       shelfCount: 0,
-      theme: 'dark'
+      theme: 'dark',
+      soundId: 'default',
+      repeatLimit: 0,
+      bannerAnimation: 'pulse',
+      bannerSpeed: 1.4,
+      bannerIntensity: 80
     },
     (data) => {
       applyTheme(data.theme || 'dark');
 
+      // Модуль 1
       toggleGuard.checked = data.enabled !== false;
       blockedCountEl.textContent = Number(data.blockedCount) || 0;
 
+      // Модуль 2
       shelfToggle.checked = data.shelfAlertEnabled !== false;
-      const vol = data.shelfAlertVolume ?? 100;
-      volumeSlider.value = vol;
-      volumeValEl.textContent = `${vol}%`;
-
-      intervalSelect.value = String(data.shelfAlertInterval ?? 10);
-
       updateShelfDisplay(data.shelfCount || 0);
       updateStatusDot();
+
+      // Звук и громкость
+      const vol = data.shelfAlertVolume !== undefined ? Number(data.shelfAlertVolume) : 100;
+      volumeSlider.value = vol;
+      volumeValEl.textContent = `${vol}%`;
+      if (volumeSliderQuick) volumeSliderQuick.value = vol;
+      if (volumeValQuick) volumeValQuick.textContent = `${vol}%`;
+
+      const sid = data.soundId || 'default';
+      soundSelect.value = sid;
+
+      // Интервал и лимит повторов
+      const interval = Number(data.shelfAlertInterval) || 10;
+      intervalSlider.value = interval;
+      intervalValEl.textContent = `${interval} мин`;
+
+      const rLimit = Number(data.repeatLimit) || 0;
+      repeatLimitSelect.value = String(rLimit);
+
+      // Анимация плашки
+      const bAnim = data.bannerAnimation || 'pulse';
+      const bSpeed = Number(data.bannerSpeed) || 1.4;
+      const bIntensity = Number(data.bannerIntensity) || 80;
+
+      animStyleSelect.value = bAnim;
+      animSpeedSlider.value = bSpeed;
+      animSpeedValEl.textContent = `${bSpeed} сек`;
+      animIntensitySlider.value = bIntensity;
+      animIntensityValEl.textContent = `${bIntensity}%`;
+
+      // Применяем параметры к Live Preview
+      updateLivePreview(bAnim, bSpeed, bIntensity);
     }
   );
 
-  // 3. Обработчик тумблера Защиты сканера
+  // =========================================================================
+  // ОБРАБОТЧИКИ СОБЫТИЙ ЭЛЕМЕНТОВ УПРАВЛЕНИЯ
+  // =========================================================================
+
+  // Тумблер защиты сканера
   toggleGuard.addEventListener('change', () => {
-    const isEnabled = toggleGuard.checked;
-    chrome.storage.local.set({ enabled: isEnabled });
+    chrome.storage.local.set({ enabled: toggleGuard.checked });
     updateStatusDot();
   });
 
-  // 4. Сброс счетчика сбоев
+  // Сброс счетчика сбоев сканера
   resetBtn.addEventListener('click', () => {
     chrome.storage.local.set({ blockedCount: 0 });
     blockedCountEl.textContent = '0';
   });
 
-  // 5. Обработчик тумблера Оповещения об отправке
+  // Тумблер оповещения об отправке
   shelfToggle.addEventListener('change', () => {
-    const isEnabled = shelfToggle.checked;
-    chrome.storage.local.set({ shelfAlertEnabled: isEnabled });
+    chrome.storage.local.set({ shelfAlertEnabled: shelfToggle.checked });
     updateStatusDot();
   });
 
-  // 6. Обработчик ползунка громкости
+  // Кнопка перехода к отправке
+  openDispatchBtn.addEventListener('click', () => {
+    chrome.runtime.sendMessage({ type: 'OPEN_DISPATCH_PAGE' });
+  });
+
+  // Ползунок быстрой громкости на главной
+  if (volumeSliderQuick) {
+    volumeSliderQuick.addEventListener('input', () => {
+      const vol = Number(volumeSliderQuick.value);
+      volumeValQuick.textContent = `${vol}%`;
+      volumeSlider.value = vol;
+      volumeValEl.textContent = `${vol}%`;
+      chrome.storage.local.set({ shelfAlertVolume: vol });
+    });
+  }
+
+  // Кнопка быстрой проверки сигнала на главной
+  if (quickTestSoundBtn) {
+    quickTestSoundBtn.addEventListener('click', () => {
+      playSelectedSound(soundSelect.value, Number(volumeSlider.value));
+    });
+  }
+
+  // Ползунок громкости в расширенных настройках
   volumeSlider.addEventListener('input', () => {
     const vol = Number(volumeSlider.value);
     volumeValEl.textContent = `${vol}%`;
+    if (volumeSliderQuick) volumeSliderQuick.value = vol;
+    if (volumeValQuick) volumeValQuick.textContent = `${vol}%`;
     chrome.storage.local.set({ shelfAlertVolume: vol });
   });
 
-  // 7. Обработчик селектора интервала повтора напоминания
-  intervalSelect.addEventListener('change', () => {
-    const interval = Number(intervalSelect.value) || 10;
-    chrome.storage.local.set({ shelfAlertInterval: interval });
+  // Выбор звукового сигнала
+  soundSelect.addEventListener('change', () => {
+    const sid = soundSelect.value;
+    chrome.storage.local.set({ soundId: sid });
+    playSelectedSound(sid, Number(volumeSlider.value));
   });
 
-  // 8. Кнопка теста звука
+  // Кнопка проверки звука в расширенных настройках
   testSoundBtn.addEventListener('click', () => {
-    const vol = Number(volumeSlider.value);
-    if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
-      chrome.runtime.sendMessage({ type: 'PLAY_CHIME', volume: vol }, (res) => {
-        if (chrome.runtime.lastError || !res?.success) {
-          playChime(vol);
-        }
-      });
-    } else {
-      playChime(vol);
-    }
+    playSelectedSound(soundSelect.value, Number(volumeSlider.value));
   });
 
-  // 9. Обновление значений в реальном времени при открытом Popup через storage.onChanged
+  // Ползунок интервала повтора
+  intervalSlider.addEventListener('input', () => {
+    const val = Number(intervalSlider.value) || 10;
+    intervalValEl.textContent = `${val} мин`;
+    chrome.storage.local.set({ shelfAlertInterval: val });
+  });
+
+  // Селектор лимита повторов
+  repeatLimitSelect.addEventListener('change', () => {
+    const val = Number(repeatLimitSelect.value) || 0;
+    chrome.storage.local.set({ repeatLimit: val });
+  });
+
+  // Селектор эффекта анимации плашки
+  animStyleSelect.addEventListener('change', () => {
+    const style = animStyleSelect.value;
+    const speed = Number(animSpeedSlider.value);
+    const intensity = Number(animIntensitySlider.value);
+    updateLivePreview(style, speed, intensity);
+    chrome.storage.local.set({ bannerAnimation: style });
+  });
+
+  // Ползунок скорости анимации плашки
+  animSpeedSlider.addEventListener('input', () => {
+    const speed = Number(animSpeedSlider.value);
+    animSpeedValEl.textContent = `${speed} сек`;
+    const style = animStyleSelect.value;
+    const intensity = Number(animIntensitySlider.value);
+    updateLivePreview(style, speed, intensity);
+    chrome.storage.local.set({ bannerSpeed: speed });
+  });
+
+  // Ползунок интенсивности анимации плашки
+  animIntensitySlider.addEventListener('input', () => {
+    const intensity = Number(animIntensitySlider.value);
+    animIntensityValEl.textContent = `${intensity}%`;
+    const style = animStyleSelect.value;
+    const speed = Number(animSpeedSlider.value);
+    updateLivePreview(style, speed, intensity);
+    chrome.storage.local.set({ bannerIntensity: intensity });
+  });
+
+  // Кнопка «Сбросить по умолчанию»
+  resetDefaultsBtn.addEventListener('click', () => {
+    const defaults = {
+      soundId: 'default',
+      shelfAlertVolume: 100,
+      shelfAlertInterval: 10,
+      repeatLimit: 0,
+      bannerAnimation: 'pulse',
+      bannerSpeed: 1.4,
+      bannerIntensity: 80
+    };
+
+    soundSelect.value = defaults.soundId;
+    volumeSlider.value = defaults.shelfAlertVolume;
+    volumeValEl.textContent = `${defaults.shelfAlertVolume}%`;
+    if (volumeSliderQuick) volumeSliderQuick.value = defaults.shelfAlertVolume;
+    if (volumeValQuick) volumeValQuick.textContent = `${defaults.shelfAlertVolume}%`;
+
+    intervalSlider.value = defaults.shelfAlertInterval;
+    intervalValEl.textContent = `${defaults.shelfAlertInterval} мин`;
+    repeatLimitSelect.value = String(defaults.repeatLimit);
+
+    animStyleSelect.value = defaults.bannerAnimation;
+    animSpeedSlider.value = defaults.bannerSpeed;
+    animSpeedValEl.textContent = `${defaults.bannerSpeed} сек`;
+    animIntensitySlider.value = defaults.bannerIntensity;
+    animIntensityValEl.textContent = `${defaults.bannerIntensity}%`;
+
+    updateLivePreview(defaults.bannerAnimation, defaults.bannerSpeed, defaults.bannerIntensity);
+    chrome.storage.local.set(defaults);
+  });
+
+  // =========================================================================
+  // ЖИВОЕ ОБНОВЛЕНИЕ ПРИ ОТКРЫТОМ ОКНЕ POPUP
+  // =========================================================================
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === 'local') {
-      if (changes.theme !== undefined) {
-        applyTheme(changes.theme.newValue);
-      }
-      if (changes.blockedCount !== undefined) {
-        const count = Number(changes.blockedCount.newValue) || 0;
-        blockedCountEl.textContent = count;
-      }
-      if (changes.enabled !== undefined) {
-        toggleGuard.checked = changes.enabled.newValue !== false;
-        updateStatusDot();
-      }
-      if (changes.shelfAlertEnabled !== undefined) {
-        shelfToggle.checked = changes.shelfAlertEnabled.newValue !== false;
-        updateStatusDot();
-      }
-      if (changes.shelfAlertVolume !== undefined) {
-        const newVol = changes.shelfAlertVolume.newValue ?? 100;
-        volumeSlider.value = newVol;
-        volumeValEl.textContent = `${newVol}%`;
-      }
-      if (changes.shelfAlertInterval !== undefined) {
-        intervalSelect.value = String(changes.shelfAlertInterval.newValue ?? 10);
-      }
-      if (changes.shelfCount !== undefined) {
-        updateShelfDisplay(changes.shelfCount.newValue ?? 0);
-      }
+    if (area !== 'local') return;
+
+    if (changes.theme !== undefined) {
+      applyTheme(changes.theme.newValue);
+    }
+    if (changes.blockedCount !== undefined) {
+      blockedCountEl.textContent = Number(changes.blockedCount.newValue) || 0;
+    }
+    if (changes.enabled !== undefined) {
+      toggleGuard.checked = changes.enabled.newValue !== false;
+      updateStatusDot();
+    }
+    if (changes.shelfAlertEnabled !== undefined) {
+      shelfToggle.checked = changes.shelfAlertEnabled.newValue !== false;
+      updateStatusDot();
+    }
+    if (changes.shelfCount !== undefined) {
+      updateShelfDisplay(changes.shelfCount.newValue ?? 0);
+    }
+    if (changes.shelfAlertVolume !== undefined) {
+      const vol = changes.shelfAlertVolume.newValue ?? 100;
+      volumeSlider.value = vol;
+      volumeValEl.textContent = `${vol}%`;
+      if (volumeSliderQuick) volumeSliderQuick.value = vol;
+      if (volumeValQuick) volumeValQuick.textContent = `${vol}%`;
+    }
+    if (changes.soundId !== undefined) {
+      soundSelect.value = changes.soundId.newValue || 'default';
+    }
+    if (changes.shelfAlertInterval !== undefined) {
+      const val = changes.shelfAlertInterval.newValue ?? 10;
+      intervalSlider.value = val;
+      intervalValEl.textContent = `${val} мин`;
+    }
+    if (changes.repeatLimit !== undefined) {
+      repeatLimitSelect.value = String(changes.repeatLimit.newValue ?? 0);
+    }
+    if (changes.bannerAnimation !== undefined || changes.bannerSpeed !== undefined || changes.bannerIntensity !== undefined) {
+      const style = animStyleSelect.value;
+      const speed = Number(animSpeedSlider.value);
+      const intensity = Number(animIntensitySlider.value);
+      updateLivePreview(style, speed, intensity);
     }
   });
 });
