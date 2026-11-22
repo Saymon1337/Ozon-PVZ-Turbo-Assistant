@@ -484,6 +484,19 @@ document.addEventListener('DOMContentLoaded', () => {
     if (changes.repeatLimit !== undefined) {
       repeatLimitSelect.value = String(changes.repeatLimit.newValue ?? 0);
     }
+    if (changes.bannerAnimation !== undefined) {
+      animStyleSelect.value = changes.bannerAnimation.newValue || 'pulse';
+    }
+    if (changes.bannerSpeed !== undefined) {
+      const spd = Number(changes.bannerSpeed.newValue) || 1.4;
+      animSpeedSlider.value = spd;
+      animSpeedValEl.textContent = `${spd} сек`;
+    }
+    if (changes.bannerIntensity !== undefined) {
+      const int = Number(changes.bannerIntensity.newValue) || 80;
+      animIntensitySlider.value = int;
+      animIntensityValEl.textContent = `${int}%`;
+    }
     if (changes.bannerAnimation !== undefined || changes.bannerSpeed !== undefined || changes.bannerIntensity !== undefined) {
       const style = animStyleSelect.value;
       const speed = Number(animSpeedSlider.value);

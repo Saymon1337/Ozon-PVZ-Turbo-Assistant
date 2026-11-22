@@ -81,14 +81,33 @@ async function ensureOffscreenDocument() {
  * Если вкладка turbo-pvz.ozon.ru открыта — переводит фокус на нее и обновляет URL.
  * Если нет — открывает новую вкладку.
  */
-async function openDispatchPage() {
+async function openDispatchPage(preferTab = null) {
   try {
-    const tabs = await chrome.tabs.query({
-      url: ['*://turbo-pvz.ozon.ru/*', '*://*.turbo-pvz.ozon.ru/*']
-    });
+    let targetTab = preferTab && preferTab.id ? preferTab : null;
 
-    if (tabs && tabs.length > 0) {
-      const targetTab = tabs[0];
+    if (!targetTab) {
+      // 1. Попробуем найти активную вкладку turbo-pvz в текущем или последнем окне
+      const activeTabs = await chrome.tabs.query({
+        url: ['*://turbo-pvz.ozon.ru/*', '*://*.turbo-pvz.ozon.ru/*'],
+        lastFocusedWindow: true,
+        active: true
+      });
+      if (activeTabs && activeTabs.length > 0) {
+        targetTab = activeTabs[0];
+      }
+    }
+
+    if (!targetTab) {
+      // 2. Ищем любую открытую вкладку turbo-pvz
+      const tabs = await chrome.tabs.query({
+        url: ['*://turbo-pvz.ozon.ru/*', '*://*.turbo-pvz.ozon.ru/*']
+      });
+      if (tabs && tabs.length > 0) {
+        targetTab = tabs[0];
+      }
+    }
+
+    if (targetTab && targetTab.id) {
       await chrome.tabs.update(targetTab.id, {
         active: true,
         url: DISPATCH_TARGET_URL
@@ -97,7 +116,7 @@ async function openDispatchPage() {
       if (targetTab.windowId) {
         await chrome.windows.update(targetTab.windowId, { focused: true });
       }
-      return { success: true, mode: 'focused_existing' };
+      return { success: true, mode: 'focused_existing', tabId: targetTab.id };
     }
   } catch (err) {
     console.warn('[Ozon PVZ Turbo Assistant] Error focusing existing tab:', err);
@@ -112,13 +131,25 @@ async function openDispatchPage() {
   }
 }
 
+// Слушатель кликов по системным уведомлениям (если используются)
+if (typeof chrome !== 'undefined' && chrome.notifications) {
+  try {
+    chrome.notifications.onClicked?.addListener(() => {
+      openDispatchPage();
+    });
+    chrome.notifications.onButtonClicked?.addListener(() => {
+      openDispatchPage();
+    });
+  } catch { }
+}
+
 /**
  * Прием сообщений от content-скрипта и popup
  */
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // Команда открытия страницы отправки
   if (message?.type === 'OPEN_DISPATCH_PAGE') {
-    openDispatchPage().then(res => sendResponse(res));
+    openDispatchPage(sender?.tab).then(res => sendResponse(res));
     return true; // Держим канал открытым
   }
 
@@ -129,7 +160,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         await ensureOffscreenDocument();
 
         const soundId = message.soundId || 'default';
-        const volume = message.volume !== undefined ? message.volume : 100;
+        const rawVol = Number(message.volume);
+        const volume = isNaN(rawVol) ? 100 : Math.max(0, Math.min(100, rawVol));
 
         // Отправляем команду в offscreen document
         chrome.runtime.sendMessage({

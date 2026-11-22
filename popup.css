@@ -229,15 +229,24 @@ body {
   display: none;
   opacity: 0;
   transform: translateY(6px);
-  transition: opacity 0.25s ease, transform 0.25s ease;
 }
 
 .tab-content.active {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  opacity: 1;
-  transform: translateY(0);
+  animation: tabFadeIn 0.22s ease-out forwards;
+}
+
+@keyframes tabFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* ==========================================================================

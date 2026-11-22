@@ -23,7 +23,9 @@ function getAudioContext() {
  */
 function createMasterOutput(ctx, volumePercent, boostMultiplier = 2.0) {
   const now = ctx.currentTime;
-  const vol = Math.max(0, Math.min(100, Number(volumePercent) !== undefined ? Number(volumePercent) : 100)) / 100;
+  const num = Number(volumePercent);
+  const volVal = isNaN(num) ? 100 : num;
+  const vol = Math.max(0, Math.min(100, volVal)) / 100;
   if (vol <= 0) return null;
 
   // Динамический лимитер

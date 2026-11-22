@@ -455,24 +455,24 @@
               box-sizing: border-box !important;
               border-bottom: 3px solid #fecaca !important;
               box-shadow: 0 4px 25px rgba(220, 38, 38, 0.9) !important;
-              transform: translateY(-100%) !important;
-              opacity: 0 !important;
+              transform: translateY(-100%);
+              opacity: 0;
               transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.35s ease !important;
             }
             #ozon-turbo-alert-banner.ota-visible {
-              transform: translateY(0) !important;
-              opacity: 1 !important;
+              transform: translateY(0);
+              opacity: 1;
             }
 
             /* 1. Пульсация */
             @keyframes ota-pulse {
               0% {
-                box-shadow: 0 4px calc(15px * var(--ota-anim-intensity, 0.8)) rgba(185, 28, 28, calc(0.7 * var(--ota-anim-intensity, 0.8))) !important;
-                filter: brightness(calc(1 - 0.06 * var(--ota-anim-intensity, 0.8))) !important;
+                box-shadow: 0 4px calc(15px * var(--ota-anim-intensity, 0.8)) rgba(185, 28, 28, calc(0.7 * var(--ota-anim-intensity, 0.8)));
+                filter: brightness(calc(1 - 0.06 * var(--ota-anim-intensity, 0.8)));
               }
               100% {
-                box-shadow: 0 6px calc(32px * var(--ota-anim-intensity, 0.8)) rgba(239, 68, 68, var(--ota-anim-intensity, 0.8)) !important;
-                filter: brightness(calc(1 + 0.16 * var(--ota-anim-intensity, 0.8))) !important;
+                box-shadow: 0 6px calc(32px * var(--ota-anim-intensity, 0.8)) rgba(239, 68, 68, var(--ota-anim-intensity, 0.8));
+                filter: brightness(calc(1 + 0.16 * var(--ota-anim-intensity, 0.8)));
               }
             }
             #ozon-turbo-alert-banner.ota-anim-pulse {
@@ -482,12 +482,12 @@
             /* 2. Мерцание рамки / свечение */
             @keyframes ota-glow {
               0%, 100% {
-                box-shadow: 0 0 calc(8px * var(--ota-anim-intensity, 0.8)) rgba(254, 202, 202, calc(0.4 * var(--ota-anim-intensity, 0.8))), 0 4px 15px rgba(185, 28, 28, 0.7) !important;
-                border-bottom-color: #fecaca !important;
+                box-shadow: 0 0 calc(8px * var(--ota-anim-intensity, 0.8)) rgba(254, 202, 202, calc(0.4 * var(--ota-anim-intensity, 0.8))), 0 4px 15px rgba(185, 28, 28, 0.7);
+                border-bottom-color: #fecaca;
               }
               50% {
-                box-shadow: 0 0 calc(30px * var(--ota-anim-intensity, 0.8)) rgba(255, 255, 255, calc(0.9 * var(--ota-anim-intensity, 0.8))), 0 6px 36px rgba(239, 68, 68, 1) !important;
-                border-bottom-color: #ffffff !important;
+                box-shadow: 0 0 calc(30px * var(--ota-anim-intensity, 0.8)) rgba(255, 255, 255, calc(0.9 * var(--ota-anim-intensity, 0.8))), 0 6px 36px rgba(239, 68, 68, 1);
+                border-bottom-color: #ffffff;
               }
             }
             #ozon-turbo-alert-banner.ota-anim-glow {
@@ -497,10 +497,10 @@
             /* 3. Плавное мигание */
             @keyframes ota-blink {
               0%, 100% {
-                opacity: 1 !important;
+                opacity: 1;
               }
               50% {
-                opacity: calc(1 - 0.6 * var(--ota-anim-intensity, 0.8)) !important;
+                opacity: calc(1 - 0.6 * var(--ota-anim-intensity, 0.8));
               }
             }
             #ozon-turbo-alert-banner.ota-anim-blink {
@@ -510,19 +510,19 @@
             /* 4. Легкое встряхивание */
             @keyframes ota-shake {
               0%, 100% {
-                transform: translateY(0) rotate(0deg) !important;
+                transform: translateY(0) rotate(0deg);
               }
               15% {
-                transform: translateY(calc(-2px * var(--ota-anim-intensity, 0.8))) rotate(calc(-0.4deg * var(--ota-anim-intensity, 0.8))) !important;
+                transform: translateY(calc(-2px * var(--ota-anim-intensity, 0.8))) rotate(calc(-0.4deg * var(--ota-anim-intensity, 0.8)));
               }
               30% {
-                transform: translateY(calc(2px * var(--ota-anim-intensity, 0.8))) rotate(calc(0.4deg * var(--ota-anim-intensity, 0.8))) !important;
+                transform: translateY(calc(2px * var(--ota-anim-intensity, 0.8))) rotate(calc(0.4deg * var(--ota-anim-intensity, 0.8)));
               }
               45% {
-                transform: translateY(calc(-1.5px * var(--ota-anim-intensity, 0.8))) rotate(calc(-0.25deg * var(--ota-anim-intensity, 0.8))) !important;
+                transform: translateY(calc(-1.5px * var(--ota-anim-intensity, 0.8))) rotate(calc(-0.25deg * var(--ota-anim-intensity, 0.8)));
               }
               60% {
-                transform: translateY(0) rotate(0deg) !important;
+                transform: translateY(0) rotate(0deg);
               }
             }
             #ozon-turbo-alert-banner.ota-anim-shake {
@@ -635,7 +635,7 @@
 
         document.getElementById('ota-btn-dismiss')?.addEventListener('click', (e) => {
           e.stopPropagation();
-          isBannerDismissedForCount = count;
+          isBannerDismissedForCount = currentShelfCount || count;
           hideTopAlertBanner();
         });
       }
@@ -756,7 +756,8 @@
         const last = Number(data.lastGlobalSoundTime) || 0;
         const limit = Number(data.repeatLimit) || 0;
         currentSoundId = data.soundId || 'default';
-        const vol = Number(data.shelfAlertVolume) !== undefined ? Number(data.shelfAlertVolume) : volumePercent;
+        const rawVol = Number(data.shelfAlertVolume);
+        const vol = !isNaN(rawVol) ? rawVol : (Number(volumePercent) || 100);
 
         // Поступили новые товары (увеличение количества)
         if (isCountIncrease) {
@@ -845,27 +846,44 @@
     // =========================================================================
 
     /**
-     * Проверка, является ли элемент частью блока «Доставка Ozon» или курьерской доставки
+     * Проверка, является ли элемент конкретным пунктом/виджетом «Доставка Ozon» или доставки.
+     * Не помечает общие структурные контейнеры (aside, nav, menu lists).
      */
     function isDeliveryBlock(el) {
       if (!el || el.nodeType !== 1) return false;
 
+      const tag = (el.tagName || '').toUpperCase();
+      if (tag === 'BODY' || tag === 'HTML' || tag === 'ASIDE' || tag === 'NAV' || tag === 'MAIN' || tag === 'HEADER') {
+        return false;
+      }
+      // Контейнеры со множеством детей — это контейнеры списка, а не единичный пункт меню
+      if (el.children && el.children.length > 5) {
+        return false;
+      }
+
       const checkStr = [
-        el.innerText || '',
-        el.textContent || '',
         el.getAttribute?.('aria-label') || '',
         el.getAttribute?.('title') || '',
         el.getAttribute?.('href') || '',
         el.className || '',
-        el.id || ''
+        el.id || '',
+        el.innerText || el.textContent || ''
       ].join(' ').toLowerCase();
 
-      // Явный фильтр: игнорируем любые вариации Доставка Ozon и доставки
+      // Если в элементе есть прямое указание на отправку / полку — это НЕ блок доставки
+      if (checkStr.includes('отправка') || checkStr.includes('полка') || checkStr.includes('outbound')) {
+        return false;
+      }
+
+      // Явный фильтр: блоки доставки Ozon, курьерской доставки
       if (
         checkStr.includes('доставка ozon') ||
         checkStr.includes('доставка озон') ||
-        (checkStr.includes('доставка') && !checkStr.includes('отправка') && !checkStr.includes('полка')) ||
-        checkStr.includes('delivery')
+        checkStr.includes('ozon доставка') ||
+        checkStr.includes('озон доставка') ||
+        checkStr.includes('delivery') ||
+        checkStr.includes('курьер') ||
+        checkStr.includes('доставка')
       ) {
         return true;
       }
@@ -874,11 +892,26 @@
     }
 
     /**
-     * Проверка, находится ли элемент внутри родительского блока «Доставка Ozon»
+     * Проверка, находится ли элемент внутри родительского блока «Доставка Ozon».
+     * Защищает от ложных срабатываний, не блокируя родительские навигационные панели (aside, nav).
      */
     function isInsideDeliveryBlock(el) {
+      if (!el || el.nodeType !== 1) return false;
+
+      const selfStr = (el.innerText || el.textContent || '').toLowerCase();
+      if (selfStr.includes('отправка') || selfStr.includes('полка') || (el.getAttribute?.('href') || '').includes('outbound')) {
+        return false;
+      }
+
       let curr = el;
-      while (curr && curr !== document.body && curr !== document.documentElement) {
+      while (curr) {
+        const tag = (curr.tagName || '').toUpperCase();
+        if (tag === 'BODY' || tag === 'HTML' || tag === 'ASIDE' || tag === 'NAV' || tag === 'MAIN' || tag === 'HEADER') {
+          break; // Не поднимаемся выше меню/сайдбара в общие контейнеры страницы
+        }
+        if (curr.children && curr.children.length > 5) {
+          break;
+        }
         if (isDeliveryBlock(curr)) {
           return true;
         }
@@ -889,21 +922,30 @@
 
     /**
      * Строгая проверка текстовых индикаторов отправки («Отправка», «Ozon Полка», «Полка Ozon»)
-     * с защитой от частичного совпадения текста с посторонними блоками
+     * с защитой от частичного совпадения текста с посторонними блоками (включая знаки пунктуации и скобки)
      */
     function isTargetDispatchText(rawText) {
       if (!rawText) return false;
       const text = rawText.trim().toLowerCase();
 
       // Отсекаем любые блоки доставки
-      if (text.includes('доставка ozon') || text.includes('доставка озон') || text.includes('доставка')) {
+      if (
+        text.includes('доставка ozon') ||
+        text.includes('доставка озон') ||
+        text.includes('ozon доставка') ||
+        text.includes('озон доставка') ||
+        text.includes('курьер') ||
+        (text.includes('доставка') && !text.includes('отправка') && !text.includes('полка'))
+      ) {
         return false;
       }
 
-      // Удаляем иконки/эмодзи и замыкающие числа
+      // Удаляем иконки/эмодзи и начальные спецсимволы
       const clean = text
-        .replace(/^[\s\p{Emoji}\p{Symbol}🚚📦🔔•·-]+/gu, '')
-        .replace(/[\d\s+]+$/g, '')
+        .replace(/^[\s\p{Emoji}\p{Symbol}🚚📦🔔•·\-_:]+/gu, '')
+        // Удаляем замыкающие числа, единицы измерения (шт/товаров/ед) и обрамляющие скобки/двоеточия
+        .replace(/[\s:(\[\-—–]*\d+[\s+)\]]*(?:шт\.?|товара?|товаров|заказа?|заказов|посыл(?:ок|ки|ка)|ед\.?|позици[йия])?[\s+)\]]*$/gui, '')
+        .replace(/[\s:(\[\-—–]+$/gu, '')
         .trim();
 
       // Строгие целевые шаблоны
@@ -917,7 +959,11 @@
       // Проверка первой строки в многострочных блоках
       const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
       if (lines.length > 0) {
-        const firstClean = lines[0].replace(/^[\s\p{Emoji}\p{Symbol}🚚📦🔔•·-]+/gu, '').replace(/[\d\s+]+$/g, '').trim();
+        const firstClean = lines[0]
+          .replace(/^[\s\p{Emoji}\p{Symbol}🚚📦🔔•·\-_:]+/gu, '')
+          .replace(/[\s:(\[\-—–]*\d+[\s+)\]]*(?:шт\.?|товара?|товаров|заказа?|заказов|посыл(?:ок|ки|ка)|ед\.?|позици[йия])?[\s+)\]]*$/gui, '')
+          .replace(/[\s:(\[\-—–]+$/gu, '')
+          .trim();
         if (/^отправка$/i.test(firstClean) || /^(ozon\s*полка|озон\s*полка|полка\s*ozon|полка\s*озон)$/i.test(firstClean)) {
           return true;
         }
