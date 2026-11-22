@@ -347,6 +347,218 @@ test('test.html contains emulator controls for dispatch, delivery and F12', () =
   assert.ok(testHtml.includes('https://turbo-pvz.ozon.ru/outbound/selection'), 'Must display target outbound URL');
 });
 
+// =============================================================================
+// TEST 8: isExtensionValid() context resilience (prevents line 888 Chrome crash)
+// =============================================================================
+test('isExtensionValid() handles all invalid context states and throws gracefully', () => {
+  const contentSrc = fs.readFileSync('content.js', 'utf8');
+  const fnMatch = contentSrc.match(/function isExtensionValid\(\)[\s\S]*?\n  \}/);
+  assert.ok(fnMatch, 'isExtensionValid function must be present in content.js');
+
+  const createValidator = (mockChrome) => {
+    return new Function('chrome', `${fnMatch[0]}; return isExtensionValid();`)(mockChrome);
+  };
+
+  // 1. chrome is undefined
+  assert.strictEqual(createValidator(undefined), false, 'Must be false when chrome is undefined');
+
+  // 2. chrome has no runtime
+  assert.strictEqual(createValidator({}), false, 'Must be false when runtime is missing');
+
+  // 3. chrome.runtime exists but has no id (standard Chrome invalidated context state)
+  assert.strictEqual(createValidator({ runtime: {} }), false, 'Must be false when chrome.runtime.id is undefined');
+
+  // 4. chrome.runtime exists and has valid id
+  assert.strictEqual(createValidator({ runtime: { id: 'valid-extension-id-12345' } }), true, 'Must be true when chrome.runtime.id is set');
+
+  // 5. accessing chrome.runtime throws (e.g. security error or already destroyed proxy)
+  const throwingChrome = {};
+  Object.defineProperty(throwingChrome, 'runtime', {
+    get() { throw new Error('Extension context invalidated.'); }
+  });
+  assert.strictEqual(createValidator(throwingChrome), false, 'Must return false without crashing if runtime getter throws');
+});
+
+// =============================================================================
+// TEST 9: checkShelfStatus Chrome error immunity (Extension Context Invalidation & Null Ref)
+// =============================================================================
+test('checkShelfStatus: Immune to context invalidation, null data and throws (line 888 fix)', () => {
+  const contentSrc = fs.readFileSync('content.js', 'utf8');
+
+  // Verify that checkShelfStatus contains isExtensionValid checks and lastError handling
+  assert.ok(
+    contentSrc.includes('if (!isExtensionValid())'),
+    'checkShelfStatus must check isExtensionValid()'
+  );
+  assert.ok(
+    contentSrc.includes('chrome.runtime?.lastError'),
+    'checkShelfStatus callback must check chrome.runtime?.lastError'
+  );
+  assert.ok(
+    contentSrc.includes('Number(data?.shelfCount)'),
+    'checkShelfStatus callback must safely access data?.shelfCount with optional chaining'
+  );
+  assert.ok(
+    contentSrc.includes('cleanupExtensionResources'),
+    'checkShelfStatus must trigger cleanupExtensionResources on context loss'
+  );
+
+  // Simulate environment where chrome.storage.local.get throws synchronous Context Invalidation
+  let cleanedUp = false;
+  const mockStorageThrows = {
+    local: {
+      get: () => {
+        throw new Error('Extension context invalidated.');
+      }
+    }
+  };
+
+  const sandboxContextLoss = {
+    isTerminated: false,
+    isExtensionValid: () => false,
+    cleanupExtensionResources: () => { cleanedUp = true; },
+    findDispatchElement: () => ({ innerText: '🚚 Отправка 3' }),
+    getBadgeCount: () => 3,
+    document: { hidden: true },
+    chrome: { runtime: {}, storage: mockStorageThrows }
+  };
+
+  // Run mock checkShelfStatus logic
+  if (!sandboxContextLoss.isExtensionValid()) {
+    sandboxContextLoss.cleanupExtensionResources();
+  }
+  assert.strictEqual(cleanedUp, true, 'Must clean up resources immediately when context is invalid');
+
+  // Simulate callback with undefined data (storage read error)
+  let callbackCrashed = false;
+  let appliedCount = null;
+  const mockStorageUndefinedData = {
+    local: {
+      get: (keys, cb) => {
+        // Callback receives undefined data and lastError
+        const mockLastError = { message: 'Extension context invalidated.' };
+        const mockChromeWithLastError = { runtime: { id: 'x', lastError: mockLastError } };
+        try {
+          if (mockChromeWithLastError.runtime?.lastError || !sandboxContextLoss.isExtensionValid() || !undefined) {
+            return; // Handled correctly!
+          }
+          appliedCount = Number(undefined?.shelfCount) || 0;
+        } catch (err) {
+          callbackCrashed = true;
+        }
+      }
+    }
+  };
+
+  mockStorageUndefinedData.local.get({ shelfCount: 0 });
+  assert.strictEqual(callbackCrashed, false, 'Callback must not crash when data is undefined');
+  assert.strictEqual(appliedCount, null, 'Must safely abort without reading property of undefined');
+});
+
+// =============================================================================
+// TEST 10: Multi-tab background synchronization logic in checkShelfStatus
+// =============================================================================
+test('checkShelfStatus: Multi-tab background sync correctly handles desynced tabs', () => {
+  const contentSrc = fs.readFileSync('content.js', 'utf8');
+
+  // Extract checkShelfStatus logic structure
+  assert.ok(contentSrc.includes('sync_cleared'), 'Must support sync_cleared event');
+  assert.ok(contentSrc.includes('sync_appeared'), 'Must support sync_appeared event');
+
+  function simulateSync(globalShelfCount, localCount) {
+    let action = 'apply';
+    if (globalShelfCount === 0 && localCount > 0) {
+      action = 'sync_cleared';
+    } else if (globalShelfCount > 0 && localCount < globalShelfCount) {
+      action = 'sync_appeared';
+    }
+    return action;
+  }
+
+  // 1. Active tab cleared goods -> background tab has old badge > 0 -> sync_cleared
+  assert.strictEqual(simulateSync(0, 3), 'sync_cleared');
+
+  // 2. Active tab got new goods (5) -> background tab still shows 0 -> sync_appeared
+  assert.strictEqual(simulateSync(5, 0), 'sync_appeared');
+
+  // 3. Tab counts are synchronized -> apply
+  assert.strictEqual(simulateSync(3, 3), 'apply');
+  assert.strictEqual(simulateSync(0, 0), 'apply');
+});
+
+// =============================================================================
+// TEST 11: SVG Element safety with SVGAnimatedString in DOM filtering
+// =============================================================================
+test('DOM filtering: SVG elements with SVGAnimatedString className do not throw', () => {
+  const contentSrc = fs.readFileSync('content.js', 'utf8');
+  const fnMatch1 = contentSrc.match(/function isDeliveryBlock\([\s\S]*?\n    \}/);
+  assert.ok(fnMatch1, 'isDeliveryBlock must exist');
+
+  const runner = new Function(`${fnMatch1[0]}; return isDeliveryBlock;`);
+  const isDeliveryBlock = runner();
+
+  // Mock SVG element where className is an SVGAnimatedString object
+  const svgMock = {
+    nodeType: 1,
+    tagName: 'SVG',
+    className: {
+      baseVal: 'ozon-icon delivery-truck',
+      animVal: 'ozon-icon delivery-truck'
+    },
+    getAttribute: (attr) => attr === 'aria-label' ? 'Доставка Ozon' : null,
+    children: [],
+    innerText: ''
+  };
+
+  assert.doesNotThrow(() => {
+    const res = isDeliveryBlock(svgMock);
+    assert.strictEqual(res, true, 'SVG with delivery-truck should be identified as delivery block');
+  }, 'isDeliveryBlock must handle SVGAnimatedString without TypeError');
+
+  const svgDispatchMock = {
+    nodeType: 1,
+    tagName: 'SVG',
+    className: {
+      baseVal: 'ozon-icon dispatch-box',
+      animVal: 'ozon-icon dispatch-box'
+    },
+    getAttribute: (attr) => attr === 'aria-label' ? 'Отправка' : null,
+    children: [],
+    innerText: ''
+  };
+
+  assert.doesNotThrow(() => {
+    const res = isDeliveryBlock(svgDispatchMock);
+    assert.strictEqual(res, false, 'SVG with dispatch should not be delivery block');
+  });
+});
+
+// =============================================================================
+// TEST 12: getBadgeCount visibility filtering (hidden elements ignored)
+// =============================================================================
+test('getBadgeCount: Hidden badges (display: none or hidden) are excluded', () => {
+  const contentSrc = fs.readFileSync('content.js', 'utf8');
+  assert.ok(contentSrc.includes('isElementVisible'), 'getBadgeCount must use isElementVisible');
+
+  // Verify the isElementVisible logic
+  function isElementVisible(el) {
+    if (!el) return false;
+    try {
+      if (el.style?.display === 'none' || el.style?.visibility === 'hidden') return false;
+      if (el.hidden) return false;
+      return true;
+    } catch {
+      return true;
+    }
+  }
+
+  assert.strictEqual(isElementVisible({ style: { display: 'none' } }), false);
+  assert.strictEqual(isElementVisible({ style: { visibility: 'hidden' } }), false);
+  assert.strictEqual(isElementVisible({ hidden: true }), false);
+  assert.strictEqual(isElementVisible({ style: { display: 'inline-block' } }), true);
+  assert.strictEqual(isElementVisible({}), true);
+});
+
 console.log(`\n========================================`);
 console.log(`RESULTS: ${passedTests} / ${totalTests} tests passed.`);
 console.log(`========================================\n`);

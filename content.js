@@ -24,6 +24,22 @@
   }
 
   // =========================================================================
+  // ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ВАЛИДАЦИИ КОНТЕКСТА
+  // =========================================================================
+
+  /**
+   * Безопасная проверка валидности контекста расширения Chrome.
+   * Предотвращает ошибки «Extension context invalidated» при обновлении/перезагрузке расширения.
+   */
+  function isExtensionValid() {
+    try {
+      return typeof chrome !== 'undefined' && Boolean(chrome.runtime && chrome.runtime.id);
+    } catch {
+      return false;
+    }
+  }
+
+  // =========================================================================
   // МОДУЛЬ 1: PVZ SCANNER GUARD
   // Защита от паразитных вызовов DevTools при сканировании маркировки «Честный Знак»
   // =========================================================================
@@ -31,16 +47,20 @@
   let isGuardActive = true;
 
   // 1. Инициализация состояния защиты
-  if (typeof chrome !== 'undefined' && chrome.storage?.local) {
-    chrome.storage.local.get({ enabled: true }, (data) => {
-      isGuardActive = data.enabled ?? true;
-    });
+  if (isExtensionValid() && chrome.storage?.local) {
+    try {
+      chrome.storage.local.get({ enabled: true }, (data) => {
+        if (chrome.runtime?.lastError || !isExtensionValid() || !data) return;
+        isGuardActive = data.enabled ?? true;
+      });
 
-    chrome.storage.onChanged.addListener((changes, area) => {
-      if (area === 'local' && changes.enabled !== undefined) {
-        isGuardActive = changes.enabled.newValue;
-      }
-    });
+      chrome.storage.onChanged.addListener((changes, area) => {
+        if (!isExtensionValid()) return;
+        if (area === 'local' && changes?.enabled !== undefined) {
+          isGuardActive = changes.enabled.newValue;
+        }
+      });
+    } catch { }
   }
 
   /**
@@ -88,19 +108,24 @@
    */
   function incrementBlockedCount() {
     try {
-      if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+      if (isExtensionValid() && chrome.storage?.local) {
         chrome.storage.local.get({ blockedCount: 0 }, (res) => {
-          if (chrome.runtime?.lastError) return;
+          if (chrome.runtime?.lastError || !isExtensionValid() || !res) return;
           const current = (typeof res?.blockedCount === 'number') ? res.blockedCount : (parseInt(res?.blockedCount, 10) || 0);
           const newTotal = current + 1;
-          chrome.storage.local.set({ blockedCount: newTotal }, () => {
-            // Мгновенно оповещаем открытый popup через runtime message
-            try {
-              if (chrome.runtime?.id) {
-                chrome.runtime.sendMessage({ type: 'BLOCKED_COUNT_UPDATED', count: newTotal }).catch(() => { });
-              }
-            } catch { }
-          });
+          try {
+            chrome.storage.local.set({ blockedCount: newTotal }, () => {
+              if (chrome.runtime?.lastError) return;
+              // Мгновенно оповещаем открытый popup через runtime message
+              try {
+                if (isExtensionValid() && chrome.runtime?.sendMessage) {
+                  chrome.runtime.sendMessage({ type: 'BLOCKED_COUNT_UPDATED', count: newTotal }, () => {
+                    if (chrome.runtime?.lastError) { /* ignore */ }
+                  });
+                }
+              } catch { }
+            });
+          } catch { }
         });
       }
     } catch (e) {
@@ -162,6 +187,53 @@
     let isReloading = false;
     let isBannerDismissedForCount = 0;
     let repeatSoundCounter = 0;
+    let shelfStatusIntervalId = null;
+    let domObserver = null;
+    let titleObserver = null;
+    let isTerminated = false;
+
+    /**
+     * Очистка таймеров и наблюдателей при инвалидации контекста расширения
+     */
+    function cleanupExtensionResources() {
+      if (isTerminated) return;
+      isTerminated = true;
+
+      try {
+        if (shelfStatusIntervalId) {
+          clearInterval(shelfStatusIntervalId);
+          shelfStatusIntervalId = null;
+        }
+      } catch { }
+
+      try {
+        if (debounceTimer) {
+          clearTimeout(debounceTimer);
+          debounceTimer = null;
+        }
+      } catch { }
+
+      try {
+        if (domObserver) {
+          domObserver.disconnect();
+          domObserver = null;
+        }
+      } catch { }
+
+      try {
+        if (titleObserver) {
+          titleObserver.disconnect();
+          titleObserver = null;
+        }
+      } catch { }
+
+      try {
+        restoreOriginalTitle();
+      } catch { }
+    }
+
+    window.addEventListener('pagehide', cleanupExtensionResources);
+    window.addEventListener('beforeunload', cleanupExtensionResources);
 
     // Защита от частых перезагрузок (минимум 12 секунд между перезагрузками одной вкладки)
     let lastReloadTimestamp = 0;
@@ -174,7 +246,7 @@
      * Обновляет устаревший интерфейс Ozon SPA без прерывания работы активной вкладки
      */
     function triggerBackgroundReload(reason) {
-      if (isReloading) return;
+      if (isReloading || isTerminated) return;
       if (!document.hidden) return; // Никогда не перезагружаем активную вкладку, на которой работает оператор!
 
       const now = Date.now();
@@ -204,105 +276,115 @@
     }
 
     // Загрузка настроек второго модуля
-    if (typeof chrome !== 'undefined' && chrome.storage?.local) {
-      chrome.storage.local.get(
-        {
-          shelfAlertEnabled: true,
-          shelfAlertVolume: 100,
-          shelfAlertInterval: 10,
-          shelfCount: 0,
-          soundId: 'default',
-          repeatLimit: 0,
-          bannerAnimation: 'pulse',
-          bannerSpeed: 1.4,
-          bannerIntensity: 80
-        },
-        (data) => {
-          isShelfAlertActive = data.shelfAlertEnabled ?? true;
-          shelfAlertVolume = Number(data.shelfAlertVolume) || 100;
-          currentSoundId = data.soundId || 'default';
-          shelfAlertIntervalMinutes = Number(data.shelfAlertInterval) || 10;
-          soundRepeatLimit = Number(data.repeatLimit) || 0;
-          bannerAnimStyle = data.bannerAnimation || 'pulse';
-          bannerAnimSpeedSec = Number(data.bannerSpeed) || 1.4;
-          bannerAnimIntensityPct = Number(data.bannerIntensity) || 80;
+    if (isExtensionValid() && chrome.storage?.local) {
+      try {
+        chrome.storage.local.get(
+          {
+            shelfAlertEnabled: true,
+            shelfAlertVolume: 100,
+            shelfAlertInterval: 10,
+            shelfCount: 0,
+            soundId: 'default',
+            repeatLimit: 0,
+            bannerAnimation: 'pulse',
+            bannerSpeed: 1.4,
+            bannerIntensity: 80
+          },
+          (data) => {
+            if (chrome.runtime?.lastError || !isExtensionValid() || !data) return;
+            isShelfAlertActive = data.shelfAlertEnabled ?? true;
+            shelfAlertVolume = Number(data.shelfAlertVolume) || 100;
+            currentSoundId = data.soundId || 'default';
+            shelfAlertIntervalMinutes = Number(data.shelfAlertInterval) || 10;
+            soundRepeatLimit = Number(data.repeatLimit) || 0;
+            bannerAnimStyle = data.bannerAnimation || 'pulse';
+            bannerAnimSpeedSec = Number(data.bannerSpeed) || 1.4;
+            bannerAnimIntensityPct = Number(data.bannerIntensity) || 80;
 
-          applyBannerCustomStyles();
-        }
-      );
-
-      chrome.storage.onChanged.addListener((changes, area) => {
-        if (area !== 'local') return;
-
-        if (changes.shelfAlertEnabled !== undefined) {
-          isShelfAlertActive = changes.shelfAlertEnabled.newValue;
-          if (!isShelfAlertActive) {
-            hideTopAlertBanner();
-            restoreOriginalTitle();
-          } else {
-            scheduleCheck();
+            applyBannerCustomStyles();
           }
-        }
+        );
 
-        if (changes.shelfAlertVolume !== undefined) {
-          shelfAlertVolume = Number(changes.shelfAlertVolume.newValue) || 100;
-        }
+        chrome.storage.onChanged.addListener((changes, area) => {
+          if (!isExtensionValid() || area !== 'local' || !changes) return;
 
-        if (changes.soundId !== undefined) {
-          currentSoundId = changes.soundId.newValue || 'default';
-        }
-
-        if (changes.shelfAlertInterval !== undefined) {
-          shelfAlertIntervalMinutes = Number(changes.shelfAlertInterval.newValue) || 10;
-        }
-
-        if (changes.repeatLimit !== undefined) {
-          soundRepeatLimit = Number(changes.repeatLimit.newValue) || 0;
-        }
-
-        // Динамическое применение стилей мерцания без перезагрузки страницы
-        if (changes.bannerAnimation !== undefined) {
-          bannerAnimStyle = changes.bannerAnimation.newValue || 'pulse';
-          applyBannerCustomStyles();
-        }
-        if (changes.bannerSpeed !== undefined) {
-          bannerAnimSpeedSec = Number(changes.bannerSpeed.newValue) || 1.4;
-          applyBannerCustomStyles();
-        }
-        if (changes.bannerIntensity !== undefined) {
-          bannerAnimIntensityPct = Number(changes.bannerIntensity.newValue) || 80;
-          applyBannerCustomStyles();
-        }
-
-        // Двусторонняя синхронизация полки между вкладками
-        if (changes.shelfCount !== undefined) {
-          const newCount = Number(changes.shelfCount.newValue) || 0;
-          const dispatchEl = findDispatchElement();
-          const localBadge = dispatchEl ? getBadgeCount(dispatchEl) : 0;
-          const currentLocal = Math.max(currentShelfCount, localBadge);
-
-          // СЛУЧАЙ 1: Товары отправлены (стало 0)
-          if (newCount === 0) {
-            hideTopAlertBanner();
-            restoreOriginalTitle();
-            repeatSoundCounter = 0;
-
-            if (document.hidden && currentLocal > 0) {
-              triggerBackgroundReload('dispatch_cleared');
+          if (changes.shelfAlertEnabled !== undefined) {
+            isShelfAlertActive = changes.shelfAlertEnabled.newValue;
+            if (!isShelfAlertActive) {
+              hideTopAlertBanner();
+              restoreOriginalTitle();
             } else {
-              currentShelfCount = 0;
+              scheduleCheck();
             }
           }
-          // СЛУЧАЙ 2: Появились новые товары на отправку (newCount > 0)
-          else if (newCount > 0) {
-            if (!document.hidden) {
-              showTopAlertBanner(newCount);
-              currentShelfCount = newCount;
-              updateDomBadgeVisual(dispatchEl, newCount);
-            } else {
-              if (currentLocal < newCount) {
-                triggerBackgroundReload('goods_appeared');
+
+          if (changes.shelfAlertVolume !== undefined) {
+            shelfAlertVolume = Number(changes.shelfAlertVolume.newValue) || 100;
+          }
+
+          if (changes.soundId !== undefined) {
+            currentSoundId = changes.soundId.newValue || 'default';
+          }
+
+          if (changes.shelfAlertInterval !== undefined) {
+            shelfAlertIntervalMinutes = Number(changes.shelfAlertInterval.newValue) || 10;
+          }
+
+          if (changes.repeatLimit !== undefined) {
+            soundRepeatLimit = Number(changes.repeatLimit.newValue) || 0;
+          }
+
+          // Динамическое применение стилей мерцания без перезагрузки страницы
+          if (changes.bannerAnimation !== undefined) {
+            bannerAnimStyle = changes.bannerAnimation.newValue || 'pulse';
+            applyBannerCustomStyles();
+          }
+          if (changes.bannerSpeed !== undefined) {
+            bannerAnimSpeedSec = Number(changes.bannerSpeed.newValue) || 1.4;
+            applyBannerCustomStyles();
+          }
+          if (changes.bannerIntensity !== undefined) {
+            bannerAnimIntensityPct = Number(changes.bannerIntensity.newValue) || 80;
+            applyBannerCustomStyles();
+          }
+
+          // Двусторонняя синхронизация полки между вкладками
+          if (changes.shelfCount !== undefined) {
+            const newCount = Number(changes.shelfCount.newValue) || 0;
+            const dispatchEl = findDispatchElement();
+            const localBadge = dispatchEl ? getBadgeCount(dispatchEl) : 0;
+            const currentLocal = Math.max(currentShelfCount, localBadge);
+
+            // СЛУЧАЙ 1: Товары отправлены (стало 0)
+            if (newCount === 0) {
+              hideTopAlertBanner();
+              restoreOriginalTitle();
+              repeatSoundCounter = 0;
+
+              if (document.hidden && currentLocal > 0) {
+                triggerBackgroundReload('dispatch_cleared');
               } else {
+                currentShelfCount = 0;
+              }
+            }
+            // СЛУЧАЙ 2: Появились новые товары на отправку (newCount > 0)
+            else if (newCount > 0) {
+              if (!document.hidden) {
+                showTopAlertBanner(newCount);
+                currentShelfCount = newCount;
+                updateDomBadgeVisual(dispatchEl, newCount);
+              } else {
+                if (currentLocal < newCount) {
+                  triggerBackgroundReload('goods_appeared');
+                } else {
+                  currentShelfCount = newCount;
+                }
+              }
+            }
+          }
+        });
+      } catch { }
+    }
                 currentShelfCount = newCount;
               }
             }
@@ -345,11 +427,16 @@
     }
 
     try {
-      const titleObserver = new MutationObserver(() => {
+      titleObserver = new MutationObserver(() => {
+        if (!isExtensionValid()) {
+          cleanupExtensionResources();
+          return;
+        }
         saveOriginalTitle();
       });
 
       function attachTitleObserver() {
+        if (isTerminated || !isExtensionValid()) return;
         saveOriginalTitle();
         const titleEl = document.querySelector('title');
         if (titleEl) {
@@ -396,15 +483,18 @@
         e.stopPropagation();
       }
 
-      if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
-        chrome.runtime.sendMessage({ type: 'OPEN_DISPATCH_PAGE' }, (resp) => {
-          if (chrome.runtime.lastError || !resp?.success) {
-            window.location.href = 'https://turbo-pvz.ozon.ru/outbound/selection';
-          }
-        });
-      } else {
-        window.location.href = 'https://turbo-pvz.ozon.ru/outbound/selection';
+      if (isExtensionValid() && chrome.runtime?.sendMessage) {
+        try {
+          chrome.runtime.sendMessage({ type: 'OPEN_DISPATCH_PAGE' }, (resp) => {
+            if (chrome.runtime?.lastError || !resp?.success) {
+              window.location.href = 'https://turbo-pvz.ozon.ru/outbound/selection';
+            }
+          });
+          return;
+        } catch { }
       }
+
+      window.location.href = 'https://turbo-pvz.ozon.ru/outbound/selection';
     }
 
     /**
@@ -709,14 +799,14 @@
      * Отправка команды воспроизведения выбранного звука в Background -> Offscreen Document
      */
     function triggerChime(volumePercent) {
-      if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
+      if (isExtensionValid() && chrome.runtime?.sendMessage) {
         try {
           chrome.runtime.sendMessage({
             type: 'PLAY_CHIME',
             soundId: currentSoundId || 'default',
             volume: volumePercent
           }, (resp) => {
-            if (chrome.runtime.lastError || (resp && !resp.success)) {
+            if (chrome.runtime?.lastError || (resp && !resp.success)) {
               playFallbackChime(volumePercent);
             }
           });
@@ -731,58 +821,77 @@
      * Умный шедулер воспроизведения звука с контролем повторов
      */
     function requestChimePlayback(volumePercent, isCountIncrease = false) {
-      if (document.hidden) {
+      if (document.hidden || isTerminated) {
         return;
       }
 
-      if (typeof chrome === 'undefined' || !chrome.storage?.local) {
+      if (!isExtensionValid() || !chrome.storage?.local) {
         triggerChime(volumePercent);
         return;
       }
 
-      chrome.storage.local.get({
-        shelfAlertEnabled: true,
-        shelfAlertInterval: 10,
-        shelfAlertVolume: 100,
-        soundId: 'default',
-        repeatLimit: 0,
-        lastGlobalSoundTime: 0
-      }, (data) => {
-        if (!data.shelfAlertEnabled) return;
-
-        const now = Date.now();
-        const intervalMinutes = Number(data.shelfAlertInterval) || 10;
-        const intervalMs = intervalMinutes * 60 * 1000;
-        const last = Number(data.lastGlobalSoundTime) || 0;
-        const limit = Number(data.repeatLimit) || 0;
-        currentSoundId = data.soundId || 'default';
-        const rawVol = Number(data.shelfAlertVolume);
-        const vol = !isNaN(rawVol) ? rawVol : (Number(volumePercent) || 100);
-
-        // Поступили новые товары (увеличение количества)
-        if (isCountIncrease) {
-          if (now - last < 3000) {
+      try {
+        chrome.storage.local.get({
+          shelfAlertEnabled: true,
+          shelfAlertInterval: 10,
+          shelfAlertVolume: 100,
+          soundId: 'default',
+          repeatLimit: 0,
+          lastGlobalSoundTime: 0
+        }, (data) => {
+          if (chrome.runtime?.lastError || !isExtensionValid() || !data) {
+            triggerChime(volumePercent);
             return;
           }
-          repeatSoundCounter = 1;
-          chrome.storage.local.set({ lastGlobalSoundTime: now }, () => {
-            triggerChime(vol);
-          });
-          return;
-        }
 
-        // Периодический повтор с ограничением количества раз
-        if (limit > 0 && repeatSoundCounter >= limit) {
-          return;
-        }
+          if (!data.shelfAlertEnabled) return;
 
-        if (now - last >= intervalMs) {
-          repeatSoundCounter++;
-          chrome.storage.local.set({ lastGlobalSoundTime: now }, () => {
-            triggerChime(vol);
-          });
-        }
-      });
+          const now = Date.now();
+          const intervalMinutes = Number(data.shelfAlertInterval) || 10;
+          const intervalMs = intervalMinutes * 60 * 1000;
+          const last = Number(data.lastGlobalSoundTime) || 0;
+          const limit = Number(data.repeatLimit) || 0;
+          currentSoundId = data.soundId || 'default';
+          const rawVol = Number(data.shelfAlertVolume);
+          const vol = !isNaN(rawVol) ? rawVol : (Number(volumePercent) || 100);
+
+          // Поступили новые товары (увеличение количества)
+          if (isCountIncrease) {
+            if (now - last < 3000) {
+              return;
+            }
+            repeatSoundCounter = 1;
+            try {
+              chrome.storage.local.set({ lastGlobalSoundTime: now }, () => {
+                if (chrome.runtime?.lastError) return;
+                triggerChime(vol);
+              });
+            } catch {
+              triggerChime(vol);
+            }
+            return;
+          }
+
+          // Периодический повтор с ограничением количества раз
+          if (limit > 0 && repeatSoundCounter >= limit) {
+            return;
+          }
+
+          if (now - last >= intervalMs) {
+            repeatSoundCounter++;
+            try {
+              chrome.storage.local.set({ lastGlobalSoundTime: now }, () => {
+                if (chrome.runtime?.lastError) return;
+                triggerChime(vol);
+              });
+            } catch {
+              triggerChime(vol);
+            }
+          }
+        });
+      } catch {
+        triggerChime(volumePercent);
+      }
     }
 
     /**
@@ -861,11 +970,15 @@
         return false;
       }
 
+      const classNameStr = typeof el.className === 'string'
+        ? el.className
+        : (el.className && typeof el.className.baseVal === 'string' ? el.className.baseVal : '');
+
       const checkStr = [
         el.getAttribute?.('aria-label') || '',
         el.getAttribute?.('title') || '',
         el.getAttribute?.('href') || '',
-        el.className || '',
+        classNameStr,
         el.id || '',
         el.innerText || el.textContent || ''
       ].join(' ').toLowerCase();
@@ -1060,11 +1173,22 @@
         return 0;
       }
 
+      function isElementVisible(el) {
+        if (!el) return false;
+        try {
+          if (el.style?.display === 'none' || el.style?.visibility === 'hidden') return false;
+          if (el.hidden) return false;
+          return true;
+        } catch {
+          return true;
+        }
+      }
+
       // 1. Поиск бейджа СТРОГО внутри самого элемента отправки
       const badgeEls = dispatchEl.querySelectorAll(badgeSelectors.join(', '));
       for (const b of badgeEls) {
         if (isInsideDeliveryBlock(b)) continue;
-        if (b.offsetParent === null && b.style.display === 'none') continue;
+        if (!isElementVisible(b)) continue;
         const count = parseNumber(b.textContent);
         if (count > 0) return count;
       }
@@ -1077,7 +1201,7 @@
           const wrapperBadges = itemWrapper.querySelectorAll(badgeSelectors.join(', '));
           for (const b of wrapperBadges) {
             if (isInsideDeliveryBlock(b)) continue;
-            if (b.offsetParent === null && b.style.display === 'none') continue;
+            if (!isElementVisible(b)) continue;
             const count = parseNumber(b.textContent);
             if (count > 0) return count;
           }
@@ -1088,7 +1212,7 @@
       const allElements = [dispatchEl, ...dispatchEl.querySelectorAll('*')];
       for (const el of allElements) {
         if (isInsideDeliveryBlock(el)) continue;
-        if (el.offsetParent === null && el.style.display === 'none') continue;
+        if (!isElementVisible(el)) continue;
         const text = (el.innerText || el.textContent || '').trim();
         if (/^\d+\+?$/.test(text)) {
           const num = parseInt(text, 10);
@@ -1115,6 +1239,12 @@
      * Проверка статуса полки отправки
      */
     function checkShelfStatus() {
+      if (isTerminated) return;
+      if (!isExtensionValid()) {
+        cleanupExtensionResources();
+        return;
+      }
+
       const dispatchEl = findDispatchElement();
       if (!dispatchEl) {
         return;
@@ -1124,29 +1254,40 @@
 
       // Если вкладка свернута (в фоне):
       if (document.hidden) {
-        if (typeof chrome !== 'undefined' && chrome.storage?.local) {
-          chrome.storage.local.get({ shelfCount: 0 }, (data) => {
-            const globalShelfCount = Number(data.shelfCount) || 0;
+        if (isExtensionValid() && chrome.storage?.local) {
+          try {
+            chrome.storage.local.get({ shelfCount: 0 }, (data) => {
+              if (chrome.runtime?.lastError || !isExtensionValid() || !data) {
+                return;
+              }
 
-            // 1. В активной вкладке товары уже отправлены (0), а в этой свернутой висит старый бейдж (> 0)
-            if (globalShelfCount === 0 && count > 0) {
-              hideTopAlertBanner();
-              restoreOriginalTitle();
-              currentShelfCount = 0;
-              repeatSoundCounter = 0;
-              triggerBackgroundReload('sync_cleared');
+              const globalShelfCount = Number(data?.shelfCount) || 0;
+
+              // 1. В активной вкладке товары уже отправлены (0), а в этой свернутой висит старый бейдж (> 0)
+              if (globalShelfCount === 0 && count > 0) {
+                hideTopAlertBanner();
+                restoreOriginalTitle();
+                currentShelfCount = 0;
+                repeatSoundCounter = 0;
+                triggerBackgroundReload('sync_cleared');
+                return;
+              }
+
+              // 2. В другой вкладке появились товары (> 0), а в этой свернутой локально еще 0 (устаревший DOM)
+              if (globalShelfCount > 0 && count < globalShelfCount) {
+                triggerBackgroundReload('sync_appeared');
+                return;
+              }
+
+              applyShelfCount(count);
+            });
+            return;
+          } catch (err) {
+            if (!isExtensionValid()) {
+              cleanupExtensionResources();
               return;
             }
-
-            // 2. В другой вкладке появились товары (> 0), а в этой свернутой локально еще 0 (устаревший DOM)
-            if (globalShelfCount > 0 && count < globalShelfCount) {
-              triggerBackgroundReload('sync_appeared');
-              return;
-            }
-
-            applyShelfCount(count);
-          });
-          return;
+          }
         }
       }
 
@@ -1157,6 +1298,8 @@
      * Применение проверенного количества отправлений к интерфейсу и хранилищу
      */
     function applyShelfCount(count) {
+      if (isTerminated) return;
+
       const prevCount = currentShelfCount;
       currentShelfCount = count;
 
@@ -1202,12 +1345,14 @@
       if (count !== lastSyncedStorageCount) {
         lastSyncedStorageCount = count;
         try {
-          if (typeof chrome !== 'undefined' && chrome.runtime?.id && chrome.storage?.local) {
+          if (isExtensionValid() && chrome.storage?.local) {
             const updateData = { shelfCount: count };
             if (count === 0) {
               updateData.lastClearedTime = Date.now();
             }
-            chrome.storage.local.set(updateData);
+            chrome.storage.local.set(updateData, () => {
+              if (chrome.runtime?.lastError) { /* ignore */ }
+            });
           }
         } catch { }
       }
@@ -1215,11 +1360,18 @@
 
     let debounceTimer = null;
     function scheduleCheck() {
+      if (isTerminated) return;
+      if (!isExtensionValid()) {
+        cleanupExtensionResources();
+        return;
+      }
       if (debounceTimer) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(checkShelfStatus, 500);
     }
 
     function initObservers() {
+      if (isTerminated || !isExtensionValid()) return;
+
       const target = document.body || document.documentElement;
       if (!target) {
         window.addEventListener('DOMContentLoaded', initObservers, { once: true });
@@ -1227,18 +1379,18 @@
       }
 
       try {
-        const observer = new MutationObserver(() => {
+        domObserver = new MutationObserver(() => {
           scheduleCheck();
         });
 
-        observer.observe(target, {
+        domObserver.observe(target, {
           childList: true,
           subtree: true,
           characterData: true
         });
       } catch { }
 
-      setInterval(checkShelfStatus, 3000);
+      shelfStatusIntervalId = setInterval(checkShelfStatus, 3000);
       scheduleCheck();
     }
 

@@ -171,14 +171,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           volume: volume
         }, (res) => {
           // Если возникла задержка при инициализации слушателя в offscreen — повторяем один раз через 80мс
-          if (chrome.runtime.lastError || !res?.played) {
+          if (chrome.runtime?.lastError || !res?.played) {
             setTimeout(() => {
-              chrome.runtime.sendMessage({
-                type: 'OFFSCREEN_PLAY_CHIME',
-                target: 'offscreen',
-                soundId: soundId,
-                volume: volume
-              });
+              try {
+                chrome.runtime.sendMessage({
+                  type: 'OFFSCREEN_PLAY_CHIME',
+                  target: 'offscreen',
+                  soundId: soundId,
+                  volume: volume
+                }, () => {
+                  if (chrome.runtime?.lastError) { /* ignore retry error */ }
+                });
+              } catch { }
             }, 80);
           }
         });

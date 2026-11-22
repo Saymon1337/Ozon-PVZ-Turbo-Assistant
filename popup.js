@@ -258,6 +258,7 @@ document.addEventListener('DOMContentLoaded', () => {
       bannerIntensity: 80
     },
     (data) => {
+      if (chrome.runtime?.lastError || !data) return;
       applyTheme(data.theme || 'dark');
 
       // Модуль 1
