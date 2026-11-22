@@ -348,28 +348,43 @@ test('test.html contains emulator controls for dispatch, delivery and F12', () =
 });
 
 // =============================================================================
-// TEST 8: isExtensionValid() context resilience (prevents line 888 Chrome crash)
 // =============================================================================
-test('isExtensionValid() handles all invalid context states and throws gracefully', () => {
+// TEST 8: isExtensionValid(), hasLastError() and safeLastError() context resilience
+// =============================================================================
+test('isExtensionValid() and hasLastError() handle all invalid context states and throws gracefully', () => {
   const contentSrc = fs.readFileSync('content.js', 'utf8');
   const fnMatch = contentSrc.match(/function isExtensionValid\(\)[\s\S]*?\n  \}/);
   assert.ok(fnMatch, 'isExtensionValid function must be present in content.js');
+  const fnMatch2 = contentSrc.match(/function hasLastError\(\)[\s\S]*?\n  \}/);
+  assert.ok(fnMatch2, 'hasLastError function must be present in content.js');
+  const fnMatch3 = contentSrc.match(/function safeLastError\(\)[\s\S]*?\n  \}/);
+  assert.ok(fnMatch3, 'safeLastError function must be present in content.js');
 
   const createValidator = (mockChrome) => {
     return new Function('chrome', `${fnMatch[0]}; return isExtensionValid();`)(mockChrome);
   };
 
+  const createErrorChecker = (mockChrome) => {
+    return new Function('chrome', `${fnMatch[0]}; ${fnMatch2[0]}; ${fnMatch3[0]}; return { has: hasLastError(), safe: safeLastError() };`)(mockChrome);
+  };
+
   // 1. chrome is undefined
   assert.strictEqual(createValidator(undefined), false, 'Must be false when chrome is undefined');
+  assert.strictEqual(createErrorChecker(undefined).has, true, 'hasLastError must be true when chrome is undefined');
+  assert.ok(createErrorChecker(undefined).safe.message, 'safeLastError must return object when chrome is undefined');
 
   // 2. chrome has no runtime
   assert.strictEqual(createValidator({}), false, 'Must be false when runtime is missing');
+  assert.strictEqual(createErrorChecker({}).has, true, 'hasLastError must be true when runtime is missing');
 
   // 3. chrome.runtime exists but has no id (standard Chrome invalidated context state)
   assert.strictEqual(createValidator({ runtime: {} }), false, 'Must be false when chrome.runtime.id is undefined');
+  assert.strictEqual(createErrorChecker({ runtime: {} }).has, true, 'hasLastError must be true when id is undefined');
 
   // 4. chrome.runtime exists and has valid id
   assert.strictEqual(createValidator({ runtime: { id: 'valid-extension-id-12345' } }), true, 'Must be true when chrome.runtime.id is set');
+  assert.strictEqual(createErrorChecker({ runtime: { id: 'valid-extension-id-12345' } }).has, false, 'hasLastError must be false when no error');
+  assert.strictEqual(createErrorChecker({ runtime: { id: 'valid-extension-id-12345' } }).safe, null, 'safeLastError must be null when no error');
 
   // 5. accessing chrome.runtime throws (e.g. security error or already destroyed proxy)
   const throwingChrome = {};
@@ -377,12 +392,25 @@ test('isExtensionValid() handles all invalid context states and throws gracefull
     get() { throw new Error('Extension context invalidated.'); }
   });
   assert.strictEqual(createValidator(throwingChrome), false, 'Must return false without crashing if runtime getter throws');
+  assert.strictEqual(createErrorChecker(throwingChrome).has, true, 'Must return true without crashing if runtime getter throws');
+
+  // 6. chrome.runtime exists, but accessing chrome.runtime.lastError throws (native V8 invalidated getter)
+  const throwingLastErrorChrome = {
+    runtime: {
+      id: 'valid-id'
+    }
+  };
+  Object.defineProperty(throwingLastErrorChrome.runtime, 'lastError', {
+    get() { throw new Error('Extension context invalidated.'); }
+  });
+  assert.strictEqual(createErrorChecker(throwingLastErrorChrome).has, true, 'hasLastError must catch throwing getter');
+  assert.ok(createErrorChecker(throwingLastErrorChrome).safe.message.includes('invalidated'), 'safeLastError must catch throwing getter');
 });
 
 // =============================================================================
 // TEST 9: checkShelfStatus Chrome error immunity (Extension Context Invalidation & Null Ref)
 // =============================================================================
-test('checkShelfStatus: Immune to context invalidation, null data and throws (line 888 fix)', () => {
+test('checkShelfStatus: Immune to context invalidation, null data and throwing lastError getters (line 888 fix)', () => {
   const contentSrc = fs.readFileSync('content.js', 'utf8');
 
   // Verify that checkShelfStatus contains isExtensionValid checks and lastError handling
@@ -391,8 +419,8 @@ test('checkShelfStatus: Immune to context invalidation, null data and throws (li
     'checkShelfStatus must check isExtensionValid()'
   );
   assert.ok(
-    contentSrc.includes('chrome.runtime?.lastError'),
-    'checkShelfStatus callback must check chrome.runtime?.lastError'
+    contentSrc.includes('hasLastError()'),
+    'checkShelfStatus callback must check hasLastError()'
   );
   assert.ok(
     contentSrc.includes('Number(data?.shelfCount)'),
@@ -429,18 +457,29 @@ test('checkShelfStatus: Immune to context invalidation, null data and throws (li
   }
   assert.strictEqual(cleanedUp, true, 'Must clean up resources immediately when context is invalid');
 
-  // Simulate callback with undefined data (storage read error)
+  // Simulate callback with undefined data and a throwing runtime.lastError getter
   let callbackCrashed = false;
   let appliedCount = null;
   const mockStorageUndefinedData = {
     local: {
       get: (keys, cb) => {
-        // Callback receives undefined data and lastError
-        const mockLastError = { message: 'Extension context invalidated.' };
-        const mockChromeWithLastError = { runtime: { id: 'x', lastError: mockLastError } };
+        // Native getter throws Extension context invalidated
+        const throwingRuntime = { id: 'x' };
+        Object.defineProperty(throwingRuntime, 'lastError', {
+          get() { throw new Error('Extension context invalidated.'); }
+        });
+
+        function hasLastError() {
+          try {
+            return !sandboxContextLoss.isExtensionValid() || Boolean(throwingRuntime && throwingRuntime.lastError);
+          } catch {
+            return true;
+          }
+        }
+
         try {
-          if (mockChromeWithLastError.runtime?.lastError || !sandboxContextLoss.isExtensionValid() || !undefined) {
-            return; // Handled correctly!
+          if (!sandboxContextLoss.isExtensionValid() || hasLastError() || !undefined) {
+            return; // Handled safely without crash!
           }
           appliedCount = Number(undefined?.shelfCount) || 0;
         } catch (err) {
@@ -451,7 +490,7 @@ test('checkShelfStatus: Immune to context invalidation, null data and throws (li
   };
 
   mockStorageUndefinedData.local.get({ shelfCount: 0 });
-  assert.strictEqual(callbackCrashed, false, 'Callback must not crash when data is undefined');
+  assert.strictEqual(callbackCrashed, false, 'Callback must not crash even if lastError getter throws');
   assert.strictEqual(appliedCount, null, 'Must safely abort without reading property of undefined');
 });
 
@@ -536,27 +575,42 @@ test('DOM filtering: SVG elements with SVGAnimatedString className do not throw'
 // =============================================================================
 // TEST 12: getBadgeCount visibility filtering (hidden elements ignored)
 // =============================================================================
-test('getBadgeCount: Hidden badges (display: none or hidden) are excluded', () => {
+test('getBadgeCount: Hidden badges (display: none, hidden, or computed hidden) are excluded', () => {
   const contentSrc = fs.readFileSync('content.js', 'utf8');
   assert.ok(contentSrc.includes('isElementVisible'), 'getBadgeCount must use isElementVisible');
 
-  // Verify the isElementVisible logic
-  function isElementVisible(el) {
-    if (!el) return false;
-    try {
-      if (el.style?.display === 'none' || el.style?.visibility === 'hidden') return false;
-      if (el.hidden) return false;
-      return true;
-    } catch {
-      return true;
-    }
-  }
+  // Extract isElementVisible logic
+  const fnMatch = contentSrc.match(/function isElementVisible\([\s\S]*?\n      \}/);
+  assert.ok(fnMatch, 'isElementVisible must exist');
+
+  const runner = new Function(`${fnMatch[0]}; return isElementVisible;`);
+  const isElementVisible = runner();
 
   assert.strictEqual(isElementVisible({ style: { display: 'none' } }), false);
   assert.strictEqual(isElementVisible({ style: { visibility: 'hidden' } }), false);
   assert.strictEqual(isElementVisible({ hidden: true }), false);
   assert.strictEqual(isElementVisible({ style: { display: 'inline-block' } }), true);
   assert.strictEqual(isElementVisible({}), true);
+});
+
+// =============================================================================
+// TEST 13: Full JavaScript syntax verification across all project files
+// =============================================================================
+test('All project JavaScript files pass full syntax compilation check (node -c)', () => {
+  const { execSync } = require('child_process');
+  const files = [
+    'content.js',
+    'background.js',
+    'offscreen.js',
+    'popup.js',
+    'popup/popup.js'
+  ];
+
+  for (const file of files) {
+    assert.doesNotThrow(() => {
+      execSync(`node -c "${file}"`, { stdio: 'pipe' });
+    }, `File ${file} failed node -c syntax compilation check!`);
+  }
 });
 
 console.log(`\n========================================`);

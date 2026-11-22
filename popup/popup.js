@@ -213,15 +213,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function playSelectedSound(soundId, volumePercent) {
     if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
-      chrome.runtime.sendMessage({
-        type: 'PLAY_CHIME',
-        soundId: soundId,
-        volume: volumePercent
-      }, (res) => {
-        if (chrome.runtime.lastError || !res?.success) {
-          playPopupChime(soundId, volumePercent);
-        }
-      });
+      try {
+        chrome.runtime.sendMessage({
+          type: 'PLAY_CHIME',
+          soundId: soundId,
+          volume: volumePercent
+        }, (res) => {
+          let hasErr = false;
+          try {
+            hasErr = Boolean(chrome.runtime && chrome.runtime.lastError);
+          } catch {
+            hasErr = true;
+          }
+          if (hasErr || !res?.success) {
+            playPopupChime(soundId, volumePercent);
+          }
+        });
+      } catch {
+        playPopupChime(soundId, volumePercent);
+      }
     } else {
       playPopupChime(soundId, volumePercent);
     }
@@ -258,7 +268,13 @@ document.addEventListener('DOMContentLoaded', () => {
       bannerIntensity: 80
     },
     (data) => {
-      if (chrome.runtime?.lastError || !data) return;
+      let hasErr = false;
+      try {
+        hasErr = Boolean(chrome.runtime && chrome.runtime.lastError);
+      } catch {
+        hasErr = true;
+      }
+      if (hasErr || !data) return;
       applyTheme(data.theme || 'dark');
 
       // Модуль 1

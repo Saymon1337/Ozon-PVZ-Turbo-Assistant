@@ -170,8 +170,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           soundId: soundId,
           volume: volume
         }, (res) => {
+          let hasErr = false;
+          try {
+            hasErr = Boolean(chrome.runtime && chrome.runtime.lastError);
+          } catch {
+            hasErr = true;
+          }
           // Если возникла задержка при инициализации слушателя в offscreen — повторяем один раз через 80мс
-          if (chrome.runtime?.lastError || !res?.played) {
+          if (hasErr || !res?.played) {
             setTimeout(() => {
               try {
                 chrome.runtime.sendMessage({
@@ -180,7 +186,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                   soundId: soundId,
                   volume: volume
                 }, () => {
-                  if (chrome.runtime?.lastError) { /* ignore retry error */ }
+                  try {
+                    if (chrome.runtime && chrome.runtime.lastError) { /* ignore retry error */ }
+                  } catch { }
                 });
               } catch { }
             }, 80);

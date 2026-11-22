@@ -39,6 +39,32 @@
     }
   }
 
+  /**
+   * Безопасная проверка наличия chrome.runtime.lastError.
+   * Предотвращает выброс исключения «Extension context invalidated» при обращении к геттеру lastError,
+   * а также помечает ошибку проверенной для Chrome API (подавляя «Unchecked runtime.lastError»).
+   */
+  function hasLastError() {
+    try {
+      if (!isExtensionValid()) return true;
+      return Boolean(chrome.runtime && chrome.runtime.lastError);
+    } catch {
+      return true;
+    }
+  }
+
+  /**
+   * Безопасное получение объекта lastError без риска падения скрипта.
+   */
+  function safeLastError() {
+    try {
+      if (!isExtensionValid()) return { message: 'Extension context invalidated' };
+      return (chrome.runtime && chrome.runtime.lastError) || null;
+    } catch (e) {
+      return { message: e?.message || 'Extension context invalidated' };
+    }
+  }
+
   // =========================================================================
   // МОДУЛЬ 1: PVZ SCANNER GUARD
   // Защита от паразитных вызовов DevTools при сканировании маркировки «Честный Знак»
@@ -50,15 +76,19 @@
   if (isExtensionValid() && chrome.storage?.local) {
     try {
       chrome.storage.local.get({ enabled: true }, (data) => {
-        if (chrome.runtime?.lastError || !isExtensionValid() || !data) return;
-        isGuardActive = data.enabled ?? true;
+        try {
+          if (!isExtensionValid() || hasLastError() || !data) return;
+          isGuardActive = data.enabled ?? true;
+        } catch { }
       });
 
       chrome.storage.onChanged.addListener((changes, area) => {
-        if (!isExtensionValid()) return;
-        if (area === 'local' && changes?.enabled !== undefined) {
-          isGuardActive = changes.enabled.newValue;
-        }
+        try {
+          if (!isExtensionValid() || area !== 'local' || !changes) return;
+          if (changes.enabled !== undefined) {
+            isGuardActive = Boolean(changes.enabled.newValue);
+          }
+        } catch { }
       });
     } catch { }
   }
@@ -110,17 +140,17 @@
     try {
       if (isExtensionValid() && chrome.storage?.local) {
         chrome.storage.local.get({ blockedCount: 0 }, (res) => {
-          if (chrome.runtime?.lastError || !isExtensionValid() || !res) return;
-          const current = (typeof res?.blockedCount === 'number') ? res.blockedCount : (parseInt(res?.blockedCount, 10) || 0);
-          const newTotal = current + 1;
           try {
+            if (!isExtensionValid() || hasLastError() || !res) return;
+            const current = (typeof res.blockedCount === 'number') ? res.blockedCount : (parseInt(res.blockedCount, 10) || 0);
+            const newTotal = current + 1;
             chrome.storage.local.set({ blockedCount: newTotal }, () => {
-              if (chrome.runtime?.lastError) return;
-              // Мгновенно оповещаем открытый popup через runtime message
               try {
-                if (isExtensionValid() && chrome.runtime?.sendMessage) {
+                if (!isExtensionValid() || hasLastError()) return;
+                // Мгновенно оповещаем открытый popup через runtime message
+                if (chrome.runtime?.sendMessage) {
                   chrome.runtime.sendMessage({ type: 'BLOCKED_COUNT_UPDATED', count: newTotal }, () => {
-                    if (chrome.runtime?.lastError) { /* ignore */ }
+                    hasLastError();
                   });
                 }
               } catch { }
@@ -129,7 +159,7 @@
         });
       }
     } catch (e) {
-      console.warn('[Turbo Assistant] Error saving blockedCount:', e);
+      // Игнорируем контекстные ошибки
     }
   }
 
@@ -138,6 +168,10 @@
    */
   function interceptKeyboardEvent(e) {
     if (!isGuardActive) return;
+    if (!isExtensionValid()) {
+      isGuardActive = false;
+      return;
+    }
 
     if (isDevToolsOrSourceShortcut(e)) {
       e.preventDefault();
@@ -230,6 +264,16 @@
       try {
         restoreOriginalTitle();
       } catch { }
+
+      try {
+        hideTopAlertBanner();
+      } catch { }
+
+      ['click', 'pointerdown', 'mousedown', 'keydown'].forEach((evt) => {
+        try {
+          window.removeEventListener(evt, unlockAudioContext, { capture: true });
+        } catch { }
+      });
     }
 
     window.addEventListener('pagehide', cleanupExtensionResources);
@@ -246,7 +290,7 @@
      * Обновляет устаревший интерфейс Ozon SPA без прерывания работы активной вкладки
      */
     function triggerBackgroundReload(reason) {
-      if (isReloading || isTerminated) return;
+      if (isReloading || isTerminated || !isExtensionValid()) return;
       if (!document.hidden) return; // Никогда не перезагружаем активную вкладку, на которой работает оператор!
 
       const now = Date.now();
@@ -291,106 +335,103 @@
             bannerIntensity: 80
           },
           (data) => {
-            if (chrome.runtime?.lastError || !isExtensionValid() || !data) return;
-            isShelfAlertActive = data.shelfAlertEnabled ?? true;
-            shelfAlertVolume = Number(data.shelfAlertVolume) || 100;
-            currentSoundId = data.soundId || 'default';
-            shelfAlertIntervalMinutes = Number(data.shelfAlertInterval) || 10;
-            soundRepeatLimit = Number(data.repeatLimit) || 0;
-            bannerAnimStyle = data.bannerAnimation || 'pulse';
-            bannerAnimSpeedSec = Number(data.bannerSpeed) || 1.4;
-            bannerAnimIntensityPct = Number(data.bannerIntensity) || 80;
+            try {
+              if (!isExtensionValid() || hasLastError() || !data) return;
+              isShelfAlertActive = data.shelfAlertEnabled ?? true;
+              shelfAlertVolume = Number(data.shelfAlertVolume) || 100;
+              currentSoundId = data.soundId || 'default';
+              shelfAlertIntervalMinutes = Number(data.shelfAlertInterval) || 10;
+              soundRepeatLimit = Number(data.repeatLimit) || 0;
+              bannerAnimStyle = data.bannerAnimation || 'pulse';
+              bannerAnimSpeedSec = Number(data.bannerSpeed) || 1.4;
+              bannerAnimIntensityPct = Number(data.bannerIntensity) || 80;
 
-            applyBannerCustomStyles();
+              applyBannerCustomStyles();
+            } catch { }
           }
         );
 
         chrome.storage.onChanged.addListener((changes, area) => {
-          if (!isExtensionValid() || area !== 'local' || !changes) return;
+          try {
+            if (!isExtensionValid() || area !== 'local' || !changes) return;
 
-          if (changes.shelfAlertEnabled !== undefined) {
-            isShelfAlertActive = changes.shelfAlertEnabled.newValue;
-            if (!isShelfAlertActive) {
-              hideTopAlertBanner();
-              restoreOriginalTitle();
-            } else {
-              scheduleCheck();
-            }
-          }
-
-          if (changes.shelfAlertVolume !== undefined) {
-            shelfAlertVolume = Number(changes.shelfAlertVolume.newValue) || 100;
-          }
-
-          if (changes.soundId !== undefined) {
-            currentSoundId = changes.soundId.newValue || 'default';
-          }
-
-          if (changes.shelfAlertInterval !== undefined) {
-            shelfAlertIntervalMinutes = Number(changes.shelfAlertInterval.newValue) || 10;
-          }
-
-          if (changes.repeatLimit !== undefined) {
-            soundRepeatLimit = Number(changes.repeatLimit.newValue) || 0;
-          }
-
-          // Динамическое применение стилей мерцания без перезагрузки страницы
-          if (changes.bannerAnimation !== undefined) {
-            bannerAnimStyle = changes.bannerAnimation.newValue || 'pulse';
-            applyBannerCustomStyles();
-          }
-          if (changes.bannerSpeed !== undefined) {
-            bannerAnimSpeedSec = Number(changes.bannerSpeed.newValue) || 1.4;
-            applyBannerCustomStyles();
-          }
-          if (changes.bannerIntensity !== undefined) {
-            bannerAnimIntensityPct = Number(changes.bannerIntensity.newValue) || 80;
-            applyBannerCustomStyles();
-          }
-
-          // Двусторонняя синхронизация полки между вкладками
-          if (changes.shelfCount !== undefined) {
-            const newCount = Number(changes.shelfCount.newValue) || 0;
-            const dispatchEl = findDispatchElement();
-            const localBadge = dispatchEl ? getBadgeCount(dispatchEl) : 0;
-            const currentLocal = Math.max(currentShelfCount, localBadge);
-
-            // СЛУЧАЙ 1: Товары отправлены (стало 0)
-            if (newCount === 0) {
-              hideTopAlertBanner();
-              restoreOriginalTitle();
-              repeatSoundCounter = 0;
-
-              if (document.hidden && currentLocal > 0) {
-                triggerBackgroundReload('dispatch_cleared');
+            if (changes.shelfAlertEnabled !== undefined) {
+              isShelfAlertActive = changes.shelfAlertEnabled.newValue;
+              if (!isShelfAlertActive) {
+                hideTopAlertBanner();
+                restoreOriginalTitle();
               } else {
-                currentShelfCount = 0;
+                scheduleCheck();
               }
             }
-            // СЛУЧАЙ 2: Появились новые товары на отправку (newCount > 0)
-            else if (newCount > 0) {
-              if (!document.hidden) {
-                showTopAlertBanner(newCount);
-                currentShelfCount = newCount;
-                updateDomBadgeVisual(dispatchEl, newCount);
-              } else {
-                if (currentLocal < newCount) {
-                  triggerBackgroundReload('goods_appeared');
+
+            if (changes.shelfAlertVolume !== undefined) {
+              shelfAlertVolume = Number(changes.shelfAlertVolume.newValue) || 100;
+            }
+
+            if (changes.soundId !== undefined) {
+              currentSoundId = changes.soundId.newValue || 'default';
+            }
+
+            if (changes.shelfAlertInterval !== undefined) {
+              shelfAlertIntervalMinutes = Number(changes.shelfAlertInterval.newValue) || 10;
+            }
+
+            if (changes.repeatLimit !== undefined) {
+              soundRepeatLimit = Number(changes.repeatLimit.newValue) || 0;
+            }
+
+            // Динамическое применение стилей мерцания без перезагрузки страницы
+            if (changes.bannerAnimation !== undefined) {
+              bannerAnimStyle = changes.bannerAnimation.newValue || 'pulse';
+              applyBannerCustomStyles();
+            }
+            if (changes.bannerSpeed !== undefined) {
+              bannerAnimSpeedSec = Number(changes.bannerSpeed.newValue) || 1.4;
+              applyBannerCustomStyles();
+            }
+            if (changes.bannerIntensity !== undefined) {
+              bannerAnimIntensityPct = Number(changes.bannerIntensity.newValue) || 80;
+              applyBannerCustomStyles();
+            }
+
+            // Двусторонняя синхронизация полки между вкладками
+            if (changes.shelfCount !== undefined) {
+              const newCount = Number(changes.shelfCount.newValue) || 0;
+              const dispatchEl = findDispatchElement();
+              const localBadge = dispatchEl ? getBadgeCount(dispatchEl) : 0;
+              const currentLocal = Math.max(currentShelfCount, localBadge);
+
+              // СЛУЧАЙ 1: Товары отправлены (стало 0)
+              if (newCount === 0) {
+                hideTopAlertBanner();
+                restoreOriginalTitle();
+                repeatSoundCounter = 0;
+
+                if (document.hidden && currentLocal > 0) {
+                  triggerBackgroundReload('dispatch_cleared');
                 } else {
+                  currentShelfCount = 0;
+                }
+              }
+              // СЛУЧАЙ 2: Появились новые товары на отправку (newCount > 0)
+              else if (newCount > 0) {
+                if (!document.hidden) {
+                  showTopAlertBanner(newCount);
                   currentShelfCount = newCount;
+                  updateDomBadgeVisual(dispatchEl, newCount);
+                } else {
+                  if (currentLocal < newCount) {
+                    triggerBackgroundReload('goods_appeared');
+                  } else {
+                    currentShelfCount = newCount;
+                  }
                 }
               }
             }
-          }
+          } catch { }
         });
       } catch { }
-    }
-                currentShelfCount = newCount;
-              }
-            }
-          }
-        }
-      });
     }
 
     /**
@@ -479,14 +520,20 @@
      */
     function handleDispatchNavigation(e) {
       if (e) {
-        e.preventDefault();
-        e.stopPropagation();
+        try {
+          e.preventDefault();
+          e.stopPropagation();
+        } catch { }
       }
 
       if (isExtensionValid() && chrome.runtime?.sendMessage) {
         try {
           chrome.runtime.sendMessage({ type: 'OPEN_DISPATCH_PAGE' }, (resp) => {
-            if (chrome.runtime?.lastError || !resp?.success) {
+            try {
+              if (!isExtensionValid() || hasLastError() || !resp?.success) {
+                window.location.href = 'https://turbo-pvz.ozon.ru/outbound/selection';
+              }
+            } catch {
               window.location.href = 'https://turbo-pvz.ozon.ru/outbound/selection';
             }
           });
@@ -806,7 +853,11 @@
             soundId: currentSoundId || 'default',
             volume: volumePercent
           }, (resp) => {
-            if (chrome.runtime?.lastError || (resp && !resp.success)) {
+            try {
+              if (!isExtensionValid() || hasLastError() || (resp && !resp.success)) {
+                playFallbackChime(volumePercent);
+              }
+            } catch {
               playFallbackChime(volumePercent);
             }
           });
@@ -839,54 +890,66 @@
           repeatLimit: 0,
           lastGlobalSoundTime: 0
         }, (data) => {
-          if (chrome.runtime?.lastError || !isExtensionValid() || !data) {
-            triggerChime(volumePercent);
-            return;
-          }
-
-          if (!data.shelfAlertEnabled) return;
-
-          const now = Date.now();
-          const intervalMinutes = Number(data.shelfAlertInterval) || 10;
-          const intervalMs = intervalMinutes * 60 * 1000;
-          const last = Number(data.lastGlobalSoundTime) || 0;
-          const limit = Number(data.repeatLimit) || 0;
-          currentSoundId = data.soundId || 'default';
-          const rawVol = Number(data.shelfAlertVolume);
-          const vol = !isNaN(rawVol) ? rawVol : (Number(volumePercent) || 100);
-
-          // Поступили новые товары (увеличение количества)
-          if (isCountIncrease) {
-            if (now - last < 3000) {
+          try {
+            if (!isExtensionValid() || hasLastError() || !data) {
+              triggerChime(volumePercent);
               return;
             }
-            repeatSoundCounter = 1;
-            try {
-              chrome.storage.local.set({ lastGlobalSoundTime: now }, () => {
-                if (chrome.runtime?.lastError) return;
-                triggerChime(vol);
-              });
-            } catch {
-              triggerChime(vol);
-            }
-            return;
-          }
 
-          // Периодический повтор с ограничением количества раз
-          if (limit > 0 && repeatSoundCounter >= limit) {
-            return;
-          }
+            if (!data.shelfAlertEnabled) return;
 
-          if (now - last >= intervalMs) {
-            repeatSoundCounter++;
-            try {
-              chrome.storage.local.set({ lastGlobalSoundTime: now }, () => {
-                if (chrome.runtime?.lastError) return;
+            const now = Date.now();
+            const intervalMinutes = Number(data.shelfAlertInterval) || 10;
+            const intervalMs = intervalMinutes * 60 * 1000;
+            const last = Number(data.lastGlobalSoundTime) || 0;
+            const limit = Number(data.repeatLimit) || 0;
+            currentSoundId = data.soundId || 'default';
+            const rawVol = Number(data.shelfAlertVolume);
+            const vol = !isNaN(rawVol) ? rawVol : (Number(volumePercent) || 100);
+
+            // Поступили новые товары (увеличение количества)
+            if (isCountIncrease) {
+              if (now - last < 3000) {
+                return;
+              }
+              repeatSoundCounter = 1;
+              try {
+                chrome.storage.local.set({ lastGlobalSoundTime: now }, () => {
+                  try {
+                    if (!isExtensionValid() || hasLastError()) return;
+                    triggerChime(vol);
+                  } catch {
+                    triggerChime(vol);
+                  }
+                });
+              } catch {
                 triggerChime(vol);
-              });
-            } catch {
-              triggerChime(vol);
+              }
+              return;
             }
+
+            // Периодический повтор с ограничением количества раз
+            if (limit > 0 && repeatSoundCounter >= limit) {
+              return;
+            }
+
+            if (now - last >= intervalMs) {
+              repeatSoundCounter++;
+              try {
+                chrome.storage.local.set({ lastGlobalSoundTime: now }, () => {
+                  try {
+                    if (!isExtensionValid() || hasLastError()) return;
+                    triggerChime(vol);
+                  } catch {
+                    triggerChime(vol);
+                  }
+                });
+              } catch {
+                triggerChime(vol);
+              }
+            }
+          } catch {
+            triggerChime(volumePercent);
           }
         });
       } catch {
@@ -908,13 +971,21 @@
       titleBlinkState = false;
 
       titleBlinkInterval = setInterval(() => {
+        if (isTerminated || !isExtensionValid()) {
+          restoreOriginalTitle();
+          cleanupExtensionResources();
+          return;
+        }
+
         if (!document.hidden) {
           restoreOriginalTitle();
           return;
         }
 
         titleBlinkState = !titleBlinkState;
-        document.title = titleBlinkState ? alertTitle : originalTitle;
+        try {
+          document.title = titleBlinkState ? alertTitle : originalTitle;
+        } catch { }
       }, 1000);
     }
 
@@ -1176,8 +1247,14 @@
       function isElementVisible(el) {
         if (!el) return false;
         try {
-          if (el.style?.display === 'none' || el.style?.visibility === 'hidden') return false;
           if (el.hidden) return false;
+          if (el.style?.display === 'none' || el.style?.visibility === 'hidden') return false;
+          if (typeof window !== 'undefined' && typeof window.getComputedStyle === 'function') {
+            const style = window.getComputedStyle(el);
+            if (style && (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0')) {
+              return false;
+            }
+          }
           return true;
         } catch {
           return true;
@@ -1245,53 +1322,66 @@
         return;
       }
 
-      const dispatchEl = findDispatchElement();
-      if (!dispatchEl) {
-        return;
-      }
+      try {
+        const dispatchEl = findDispatchElement();
+        if (!dispatchEl) {
+          return;
+        }
 
-      const count = getBadgeCount(dispatchEl);
+        const count = getBadgeCount(dispatchEl);
 
-      // Если вкладка свернута (в фоне):
-      if (document.hidden) {
-        if (isExtensionValid() && chrome.storage?.local) {
-          try {
-            chrome.storage.local.get({ shelfCount: 0 }, (data) => {
-              if (chrome.runtime?.lastError || !isExtensionValid() || !data) {
-                return;
-              }
+        // Если вкладка свернута (в фоне):
+        if (document.hidden) {
+          if (isExtensionValid() && chrome.storage?.local) {
+            try {
+              chrome.storage.local.get({ shelfCount: 0 }, (data) => {
+                try {
+                  if (!isExtensionValid() || hasLastError() || !data) {
+                    if (!isExtensionValid()) cleanupExtensionResources();
+                    return;
+                  }
 
-              const globalShelfCount = Number(data?.shelfCount) || 0;
+                  const globalShelfCount = Number(data?.shelfCount) || 0;
 
-              // 1. В активной вкладке товары уже отправлены (0), а в этой свернутой висит старый бейдж (> 0)
-              if (globalShelfCount === 0 && count > 0) {
-                hideTopAlertBanner();
-                restoreOriginalTitle();
-                currentShelfCount = 0;
-                repeatSoundCounter = 0;
-                triggerBackgroundReload('sync_cleared');
-                return;
-              }
+                  // 1. В активной вкладке товары уже отправлены (0), а в этой свернутой висит старый бейдж (> 0)
+                  if (globalShelfCount === 0 && count > 0) {
+                    hideTopAlertBanner();
+                    restoreOriginalTitle();
+                    currentShelfCount = 0;
+                    repeatSoundCounter = 0;
+                    triggerBackgroundReload('sync_cleared');
+                    return;
+                  }
 
-              // 2. В другой вкладке появились товары (> 0), а в этой свернутой локально еще 0 (устаревший DOM)
-              if (globalShelfCount > 0 && count < globalShelfCount) {
-                triggerBackgroundReload('sync_appeared');
-                return;
-              }
+                  // 2. В другой вкладке появились товары (> 0), а в этой свернутой локально еще 0 (устаревший DOM)
+                  if (globalShelfCount > 0 && count < globalShelfCount) {
+                    triggerBackgroundReload('sync_appeared');
+                    return;
+                  }
 
-              applyShelfCount(count);
-            });
-            return;
-          } catch (err) {
-            if (!isExtensionValid()) {
-              cleanupExtensionResources();
+                  applyShelfCount(count);
+                } catch (callbackErr) {
+                  if (!isExtensionValid()) {
+                    cleanupExtensionResources();
+                  }
+                }
+              });
               return;
+            } catch (err) {
+              if (!isExtensionValid()) {
+                cleanupExtensionResources();
+                return;
+              }
             }
           }
         }
-      }
 
-      applyShelfCount(count);
+        applyShelfCount(count);
+      } catch (err) {
+        if (!isExtensionValid()) {
+          cleanupExtensionResources();
+        }
+      }
     }
 
     /**
@@ -1351,7 +1441,11 @@
               updateData.lastClearedTime = Date.now();
             }
             chrome.storage.local.set(updateData, () => {
-              if (chrome.runtime?.lastError) { /* ignore */ }
+              try {
+                if (!isExtensionValid() || hasLastError()) {
+                  cleanupExtensionResources();
+                }
+              } catch { }
             });
           }
         } catch { }
@@ -1365,8 +1459,10 @@
         cleanupExtensionResources();
         return;
       }
-      if (debounceTimer) clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(checkShelfStatus, 500);
+      try {
+        if (debounceTimer) clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(checkShelfStatus, 500);
+      } catch { }
     }
 
     function initObservers() {
@@ -1380,6 +1476,10 @@
 
       try {
         domObserver = new MutationObserver(() => {
+          if (isTerminated || !isExtensionValid()) {
+            cleanupExtensionResources();
+            return;
+          }
           scheduleCheck();
         });
 
@@ -1390,7 +1490,9 @@
         });
       } catch { }
 
-      shelfStatusIntervalId = setInterval(checkShelfStatus, 3000);
+      try {
+        shelfStatusIntervalId = setInterval(checkShelfStatus, 3000);
+      } catch { }
       scheduleCheck();
     }
 
